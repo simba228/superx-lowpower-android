@@ -54,6 +54,16 @@ class SharedPrefHelper @Inject constructor(
         private const val MAX_SIMULTANEOUS_DOWNLOADS = "MAX_SIMULTANEOUS_DOWNLOADS"
         private const val IS_ADBLOCK_ON = "IS_ADBLOCK_ON"
         private const val IS_DOWNLOAD_SUBTITLES = "IS_DOWNLOAD_SUBTITLES"
+        private const val SEARCH_ENGINE = "SEARCH_ENGINE"
+    }
+
+    fun getSearchEngineId(): String = sharedPreferences.getString(
+        SEARCH_ENGINE,
+        "duckduckgo"
+    ) ?: "duckduckgo"
+
+    fun setSearchEngineId(id: String) {
+        sharedPreferences.edit { putString(SEARCH_ENGINE, id) }
     }
 
     private val gson = Gson()

@@ -25,6 +25,12 @@ import com.myAllVideoBrowser.databinding.ActivityMainBinding
 import com.myAllVideoBrowser.ui.component.adapter.MainAdapter
 import com.myAllVideoBrowser.ui.main.base.BaseActivity
 import com.myAllVideoBrowser.ui.main.progress.ProgressViewModel
+import com.myAllVideoBrowser.ui.main.player.FloatingVideoService
+import com.myAllVideoBrowser.ui.main.player.VideoPlayerFragment
+import com.myAllVideoBrowser.data.local.room.entity.VideFormatEntityList
+import com.myAllVideoBrowser.data.local.room.entity.VideoFormatEntity
+import com.myAllVideoBrowser.data.local.room.entity.VideoInfo
+import com.myAllVideoBrowser.util.FileNameCleaner
 import com.myAllVideoBrowser.ui.main.proxies.ProxiesViewModel
 import com.myAllVideoBrowser.ui.main.settings.SettingsViewModel
 import com.myAllVideoBrowser.util.AppLogger
@@ -33,6 +39,10 @@ import com.myAllVideoBrowser.util.downloaders.generic_downloader.models.VideoTas
 import com.myAllVideoBrowser.util.downloaders.youtubedl_downloader.YoutubeDlDownloaderWorker
 import com.myAllVideoBrowser.util.fragment.FragmentFactory
 import javax.inject.Inject
+import okhttp3.Headers.Companion.toHeaders
+import okhttp3.Request
+import org.json.JSONObject
+import java.util.UUID
 
 //@OpenForTesting
 class MainActivity : BaseActivity() {
@@ -172,6 +182,7 @@ class MainActivity : BaseActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (handleFloatingDownload(intent)) return
         if (intent.getBooleanExtra(
                 YoutubeDlDownloaderWorker.IS_FINISHED_DOWNLOAD_ACTION_KEY,
                 false
@@ -207,6 +218,67 @@ class MainActivity : BaseActivity() {
                 }
             }
         }
+    }
+
+    private fun handleFloatingDownload(intent: Intent): Boolean {
+        if (intent.action != FloatingVideoService.ACTION_DOWNLOAD) return false
+        val url = intent.getStringExtra(VideoPlayerFragment.VIDEO_URL).orEmpty()
+        if (url.isBlank()) return true
+        val title = FileNameCleaner.cleanFileName(
+            intent.getStringExtra(VideoPlayerFragment.VIDEO_NAME).orEmpty().ifBlank { "video" }
+        )
+        val rawHeaders = intent.getStringExtra(VideoPlayerFragment.VIDEO_HEADERS) ?: "{}"
+        val headers = runCatching {
+            val json = JSONObject(rawHeaders)
+            json.keys().asSequence().associateWith { json.optString(it) }
+        }.getOrDefault(emptyMap())
+        val mime = intent.getStringExtra(VideoPlayerFragment.VIDEO_MIME)
+        val isHls = mime == androidx.media3.common.MimeTypes.APPLICATION_M3U8 ||
+            url.contains("m3u8", ignoreCase = true)
+        val format = VideoFormatEntity(
+            format = if (isHls) "hls" else "http",
+            formatId = if (isHls) "hls-auto" else "http-auto",
+            ext = "mp4",
+            url = url,
+            httpHeaders = headers
+        )
+        val request = runCatching {
+            Request.Builder().url(url).headers(headers.toHeaders()).build()
+        }.getOrNull()
+        progressViewModel.downloadVideo(
+            this,
+            VideoInfo(
+                id = UUID.randomUUID().toString(),
+                downloadUrls = request?.let(::listOf) ?: emptyList(),
+                title = title,
+                ext = "mp4",
+                originalUrl = url,
+                formats = VideFormatEntityList(listOf(format)),
+                isRegularDownload = !isHls,
+                isDetectedBySuperX = true
+            )
+        )
+        dataBinding.viewPager.currentItem = 1
+        Toast.makeText(this, R.string.floating_download_started, Toast.LENGTH_SHORT).show()
+        return true
+    }
+
+    override fun onStop() {
+        mainViewModel.browserServicesProvider?.getTabsListChangeEvent()?.get()
+            ?.mapNotNull { it.getWebView() }
+            ?.forEach {
+                it.onPause()
+                it.pauseTimers()
+            }
+        super.onStop()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        mainViewModel.browserServicesProvider?.getTabsListChangeEvent()?.get()
+            ?.mapNotNull { it.getWebView() }
+            ?.firstOrNull()
+            ?.resumeTimers()
     }
 
     private fun grantPermissions() {

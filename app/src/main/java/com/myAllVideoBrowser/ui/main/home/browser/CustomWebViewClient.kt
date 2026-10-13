@@ -56,6 +56,75 @@ val injectJsInterceptor = """
         })();
     """.trimIndent()
 
+val injectVideoProgressTap = """
+    (function() {
+        if (window.__superxTapSeekInstalled) return;
+        window.__superxTapSeekInstalled = true;
+
+        function reportPlayingVideo(video) {
+            const source = video && (video.currentSrc || video.src);
+            if (source && window.AndroidBridge && window.AndroidBridge.videoStarted) {
+                window.AndroidBridge.videoStarted(source);
+            }
+        }
+
+        document.addEventListener('play', function(event) {
+            if (event.target && event.target.tagName === 'VIDEO') {
+                reportPlayingVideo(event.target);
+            }
+        }, true);
+
+        function playableVideo(element) {
+            const container = element && element.closest
+                ? element.closest('[class*="player"], [id*="player"], video')
+                : null;
+            const nearby = container && container.tagName === 'VIDEO'
+                ? container
+                : container && container.querySelector ? container.querySelector('video') : null;
+            if (nearby) return nearby;
+            const videos = Array.from(document.querySelectorAll('video'));
+            return videos.find(v => !v.paused && isFinite(v.duration) && v.duration > 0)
+                || videos.find(v => isFinite(v.duration) && v.duration > 0)
+                || null;
+        }
+
+        document.addEventListener('pointerup', function(event) {
+            if (event.button !== undefined && event.button !== 0) return;
+            const path = event.composedPath ? event.composedPath() : [event.target];
+            const target = path.find(node => node && node.nodeType === 1);
+            if (!target || !target.getBoundingClientRect) return;
+
+            let seekBar = path.find(node => {
+                if (!node || node.nodeType !== 1) return false;
+                const text = ((node.id || '') + ' ' + (node.className || '') + ' ' +
+                    (node.getAttribute && node.getAttribute('role') || '')).toLowerCase();
+                return (node.tagName === 'INPUT' && node.type === 'range') ||
+                    /progress|seek|timeline/.test(text);
+            });
+
+            let video = playableVideo(seekBar || target);
+            let bar = seekBar;
+            if (!bar && target.tagName === 'VIDEO') {
+                const videoRect = target.getBoundingClientRect();
+                const controlHeight = Math.max(48, videoRect.height * 0.18);
+                if (event.clientY < videoRect.bottom - controlHeight) return;
+                video = target;
+                bar = target;
+            }
+            if (!bar || !video || !isFinite(video.duration) || video.duration <= 0) return;
+
+            const rect = bar.getBoundingClientRect();
+            if (!rect.width) return;
+            const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+            video.currentTime = video.duration * ratio;
+        }, true);
+
+        document.querySelectorAll('video').forEach(function(video) {
+            if (!video.paused) reportPlayingVideo(video);
+        });
+    })();
+""".trimIndent()
+
 enum class ContentType {
     M3U8,
     MPD,
@@ -300,6 +369,7 @@ class CustomWebViewClient(
 
     override fun onPageFinished(view: WebView, url: String) {
         super.onPageFinished(view, url)
+        view.evaluateJavascript(injectVideoProgressTap, null)
         tabViewModel.finishPage(url)
     }
 

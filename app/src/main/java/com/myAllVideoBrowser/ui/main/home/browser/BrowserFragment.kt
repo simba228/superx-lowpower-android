@@ -3,7 +3,9 @@ package com.myAllVideoBrowser.ui.main.home.browser
 //import com.allVideoDownloaderXmaster.OpenForTesting
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -28,6 +30,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MimeTypes
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -43,6 +46,8 @@ import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.GlobalVideoDete
 import com.myAllVideoBrowser.ui.main.home.browser.homeTab.BrowserHomeFragment
 import com.myAllVideoBrowser.ui.main.home.browser.webTab.WebTab
 import com.myAllVideoBrowser.ui.main.home.browser.webTab.WebTabFragment
+import com.myAllVideoBrowser.ui.main.player.FloatingVideoService
+import com.myAllVideoBrowser.ui.main.player.VideoPlayerFragment
 import com.myAllVideoBrowser.ui.main.progress.WrapContentLinearLayoutManager
 import com.myAllVideoBrowser.ui.main.settings.SettingsViewModel
 import com.myAllVideoBrowser.util.*
@@ -52,6 +57,7 @@ import com.myAllVideoBrowser.util.proxy_utils.proxy_manager.ProxyManager
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import javax.inject.Inject
 
 
@@ -156,6 +162,9 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
 
     private var backPressedOnce = false
 
+    @Volatile
+    private var lastWorkerFloatingUrl = ""
+
     private val buttonStateCallback = object :
         Observable.OnPropertyChangedCallback() {
         override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
@@ -195,9 +204,15 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
                     }
                 }
 
-                val contentType = VideoUtils.getContentTypeByUrl(
+            val obviousM3u8 = url.contains(".m3u8", ignoreCase = true)
+            val obviousMpd = url.contains(".mpd", ignoreCase = true)
+            val contentType = when {
+                obviousM3u8 -> ContentType.M3U8
+                obviousMpd -> ContentType.MPD
+                else -> VideoUtils.getContentTypeByUrl(
                     url, requestWithCookies?.headers, okHttpProxyClient
                 )
+            }
 
                 if (contentType == ContentType.MPD || contentType == ContentType.M3U8 || url.contains(
                         ".m3u8"
@@ -207,6 +222,9 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
                 ) {
                     lifecycleScope.launch(Dispatchers.Main) {
                         if (requestWithCookies != null && isM3u8Check) {
+                            if (contentType == ContentType.M3U8 || obviousM3u8) {
+                                openWorkerVideoImmediately(requestWithCookies)
+                            }
                             videoDetectionModel.verifyLinkStatus(requestWithCookies, "", true)
                         }
                     }
@@ -221,6 +239,24 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
 
             return super.shouldInterceptRequest(request)
         }
+    }
+
+    private fun openWorkerVideoImmediately(request: okhttp3.Request) {
+        val url = request.url.toString()
+        if (url == lastWorkerFloatingUrl || !Settings.canDrawOverlays(requireContext())) return
+        lastWorkerFloatingUrl = url
+        val headers = JSONObject(request.headers.toMap()).toString()
+        ContextCompat.startForegroundService(
+            requireContext(),
+            Intent(requireContext(), FloatingVideoService::class.java).apply {
+                action = FloatingVideoService.ACTION_START
+                putExtra(VideoPlayerFragment.VIDEO_URL, url)
+                putExtra(VideoPlayerFragment.VIDEO_HEADERS, headers)
+                putExtra(VideoPlayerFragment.VIDEO_NAME, getString(R.string.floating_video))
+                putExtra(VideoPlayerFragment.VIDEO_MIME, MimeTypes.APPLICATION_M3U8)
+            }
+        )
+        AppLogger.d("Fast floating video from ServiceWorker: HLS")
     }
 
     inner class TabsFragmentStateAdapter(private var webTabsRoutes: List<WebTab>) :

@@ -17,6 +17,7 @@ import com.myAllVideoBrowser.R
 import com.myAllVideoBrowser.databinding.FragmentSettingsBinding
 import com.myAllVideoBrowser.ui.main.base.BaseFragment
 import com.myAllVideoBrowser.ui.main.home.MainActivity
+import com.myAllVideoBrowser.ui.main.home.browser.SearchEngine
 import com.myAllVideoBrowser.ui.main.settings.adblock.AdBlockSettingsFragment
 import com.myAllVideoBrowser.util.FileUtil
 import com.myAllVideoBrowser.util.IntentUtil
@@ -119,6 +120,7 @@ class SettingsFragment : BaseFragment() {
         setupSliderListeners()
         setupTextUpdateCallbacks()
         handleUIEvents()
+        dataBinding.layoutSearchEngine.setOnClickListener { showSearchEngineDialog() }
 
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner) {
             parentFragmentManager.popBackStack()
@@ -143,6 +145,19 @@ class SettingsFragment : BaseFragment() {
             settingsViewModel.m3u8ThreadsCount.get().coerceIn(1, maxThreads.toInt()).toFloat()
         dataBinding.seekBarAdsTreshold.value =
             settingsViewModel.videoDetectionTreshold.get().toFloat().coerceIn(0f, 52428800f)
+    }
+
+    private fun showSearchEngineDialog() {
+        val engines = SearchEngine.entries.toTypedArray()
+        val selected = engines.indexOf(SearchEngine.current)
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.default_search_engine)
+            .setSingleChoiceItems(engines.map { it.displayName }.toTypedArray(), selected) { dialog, which ->
+                settingsViewModel.setSearchEngine(engines[which])
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     override fun onDestroyView() {

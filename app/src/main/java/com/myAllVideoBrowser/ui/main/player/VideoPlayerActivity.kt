@@ -19,4 +19,14 @@ class VideoPlayerActivity : BaseActivity() {
 
         intent.extras?.let { addFragment(R.id.player_content_frame, it, ::VideoPlayerFragment) }
     }
+
+    override fun onStop() {
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        super.onStop()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
 }

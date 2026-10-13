@@ -5,11 +5,15 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import android.content.Intent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.ViewModelProvider
 import androidx.media3.common.MediaItem
@@ -21,10 +25,9 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+import androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
-import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView.SHOW_BUFFERING_ALWAYS
@@ -45,6 +48,7 @@ class VideoPlayerFragment : BaseFragment() {
         const val VIDEO_URL = "video_url"
         const val VIDEO_HEADERS = "video_headers"
         const val VIDEO_NAME = "video_name"
+        const val VIDEO_MIME = "video_mime"
     }
 
     @Inject
@@ -62,6 +66,16 @@ class VideoPlayerFragment : BaseFragment() {
 
     private lateinit var dataBinding: FragmentPlayerBinding
     private var isStretched = false
+    private var pendingFloatingLaunch = false
+
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        if (pendingFloatingLaunch && Settings.canDrawOverlays(requireContext())) {
+            launchFloatingPlayer()
+        }
+        pendingFloatingLaunch = false
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -121,6 +135,13 @@ class VideoPlayerFragment : BaseFragment() {
 
             currentBinding.viewModel = videoPlayerViewModel
             currentBinding.toolbar.setNavigationOnClickListener(navigationIconClickListener)
+            currentBinding.toolbar.inflateMenu(com.myAllVideoBrowser.R.menu.player_menu)
+            currentBinding.toolbar.setOnMenuItemClickListener { item ->
+                if (item.itemId == com.myAllVideoBrowser.R.id.action_floating_player) {
+                    requestFloatingPlayer()
+                    true
+                } else false
+            }
             currentBinding.videoView.player = player
             currentBinding.videoView.setShowBuffering(SHOW_BUFFERING_ALWAYS)
             currentBinding.videoView.setFullscreenButtonClickListener {
@@ -155,10 +176,23 @@ class VideoPlayerFragment : BaseFragment() {
 
             if (url != Uri.EMPTY) {
                 try {
-                    val mediaItem: MediaItem = MediaItem.fromUri(url)
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(url)
+                        .apply {
+                            val explicitMime = arguments?.getString(VIDEO_MIME)
+                            if (!explicitMime.isNullOrBlank()) setMimeType(explicitMime)
+                            else if (url.toString().contains("m3u8", ignoreCase = true)) {
+                                setMimeType(MimeTypes.APPLICATION_M3U8)
+                            }
+                        }
+                        .build()
                     player.setMediaItem(mediaItem)
                     player.prepare()
-                    player.playWhenReady = true
+                    val startPosition = arguments?.getLong(FloatingVideoService.EXTRA_POSITION, 0L) ?: 0L
+                    if (startPosition > 0L) player.seekTo(startPosition)
+                    player.playWhenReady = arguments?.getBoolean(
+                        FloatingVideoService.EXTRA_PLAY_WHEN_READY, true
+                    ) ?: true
                 } catch (e: Throwable) {
                     Toast.makeText(context, "Error loading video: ${e.message}", Toast.LENGTH_LONG).show()
                     handleClose()
@@ -209,17 +243,9 @@ class VideoPlayerFragment : BaseFragment() {
 
     private fun createRenderFactory(): RenderersFactory {
         return DefaultRenderersFactory(requireContext().applicationContext)
-            .setExtensionRendererMode(EXTENSION_RENDERER_MODE_PREFER)
-            .setMediaCodecSelector { mimeType, requiresSecureDecoder, requiresTunnelingDecoder ->
-                var decoderInfos =
-                    MediaCodecSelector.DEFAULT
-                        .getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
-                if (MimeTypes.VIDEO_H264 == mimeType) {
-                    decoderInfos = ArrayList(decoderInfos)
-                    decoderInfos.reverse()
-                }
-                decoderInfos
-            }
+            // Prefer platform MediaCodec hardware decoders. Extensions remain available only
+            // as a fallback instead of being preferred over the efficient hardware path.
+            .setExtensionRendererMode(EXTENSION_RENDERER_MODE_ON)
     }
 
     private fun createMediaFactory(
@@ -249,6 +275,36 @@ class VideoPlayerFragment : BaseFragment() {
 
     private fun handleClose() {
         videoPlayerViewModel.stop()
+        activity?.finish()
+    }
+
+    private fun requestFloatingPlayer() {
+        if (Settings.canDrawOverlays(requireContext())) {
+            launchFloatingPlayer()
+            return
+        }
+        pendingFloatingLaunch = true
+        Toast.makeText(context, com.myAllVideoBrowser.R.string.floating_video_permission, Toast.LENGTH_LONG).show()
+        overlayPermissionLauncher.launch(
+            Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:${requireContext().packageName}")
+            )
+        )
+    }
+
+    private fun launchFloatingPlayer() {
+        val serviceIntent = Intent(requireContext(), FloatingVideoService::class.java).apply {
+            action = FloatingVideoService.ACTION_START
+            putExtra(VIDEO_URL, videoPlayerViewModel.videoUrl.get()?.toString())
+            putExtra(VIDEO_HEADERS, arguments?.getString(VIDEO_HEADERS) ?: "{}")
+            putExtra(VIDEO_NAME, videoPlayerViewModel.videoName.get())
+            putExtra(VIDEO_MIME, arguments?.getString(VIDEO_MIME))
+            putExtra(FloatingVideoService.EXTRA_POSITION, player.currentPosition)
+            putExtra(FloatingVideoService.EXTRA_PLAY_WHEN_READY, player.playWhenReady)
+        }
+        player.playWhenReady = false
+        ContextCompat.startForegroundService(requireContext(), serviceIntent)
         activity?.finish()
     }
 

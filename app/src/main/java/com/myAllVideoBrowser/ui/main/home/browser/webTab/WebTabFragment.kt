@@ -3,6 +3,7 @@ package com.myAllVideoBrowser.ui.main.home.browser.webTab
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,17 +15,23 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.webkit.WebSettings
 import android.webkit.WebView
+import android.webkit.CookieManager
+import android.provider.Settings
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ShareCompat
+import androidx.core.content.ContextCompat
 import androidx.databinding.Observable
 import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.FragmentTransaction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
 import androidx.lifecycle.viewModelScope
 import com.bumptech.glide.Glide
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -57,6 +64,8 @@ import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.DetectedVideosT
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.VideoDetectionTabViewModel
 import com.myAllVideoBrowser.ui.main.player.VideoPlayerActivity
 import com.myAllVideoBrowser.ui.main.player.VideoPlayerFragment
+import com.myAllVideoBrowser.ui.main.player.FloatingVideoService
+import com.myAllVideoBrowser.ui.main.player.FloatingVideoFormatSelector
 import com.myAllVideoBrowser.util.AppLogger
 import com.myAllVideoBrowser.util.AppUtil
 import com.myAllVideoBrowser.util.FileNameCleaner
@@ -69,6 +78,7 @@ import org.json.JSONObject
 import java.util.UUID
 import javax.inject.Inject
 
+@UnstableApi
 class WebTabFragment : BaseWebTabFragment() {
 
     companion object {
@@ -110,6 +120,17 @@ class WebTabFragment : BaseWebTabFragment() {
     private var videoToast: Toast? = null
 
     private var canGoCounter = 0
+    private var pendingFloatingVideo: VideoInfo? = null
+    private var lastFloatingUrl = ""
+
+    private val overlayPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        pendingFloatingVideo?.let { video ->
+            if (Settings.canDrawOverlays(requireContext())) startFloatingVideo(video)
+        }
+        pendingFloatingVideo = null
+    }
 
     private val backPressedCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
@@ -303,6 +324,13 @@ class WebTabFragment : BaseWebTabFragment() {
     private fun onVideoPushed() {
         showToastVideoFound()
 
+        val detected = (videoDetectionTabViewModel.downloadButtonState.get()
+            as? DownloadButtonStateCanDownload)?.info
+        if (detected != null) {
+            autoOpenFloatingVideo(detected)
+            return
+        }
+
         val isDownloadsVisible = isDetectedVideosTabFragmentVisible()
         val isCond = !tabViewModel.isDownloadDialogShown.get() && !isDownloadsVisible
         if (context != null && mainActivity.settingsViewModel.getVideoAlertState()
@@ -312,6 +340,47 @@ class WebTabFragment : BaseWebTabFragment() {
                 showAlertVideoFound()
             }
         }
+    }
+
+    private fun autoOpenFloatingVideo(videoInfo: VideoInfo) {
+        val format = FloatingVideoFormatSelector.select(videoInfo) ?: return
+        val url = format.url ?: return
+        if (url == lastFloatingUrl) return
+        lastFloatingUrl = url
+        if (!Settings.canDrawOverlays(requireContext())) {
+            pendingFloatingVideo = videoInfo
+            overlayPermissionLauncher.launch(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${requireContext().packageName}")
+                )
+            )
+            return
+        }
+        startFloatingVideo(videoInfo)
+    }
+
+    private fun startFloatingVideo(videoInfo: VideoInfo) {
+        val format = FloatingVideoFormatSelector.select(videoInfo) ?: return
+        val url = format.url ?: return
+        AppLogger.d(
+            "Floating video selected: format=${format.formatId}, ext=${format.ext}, " +
+                "height=${format.height}, hls=${format.isM3u8}"
+        )
+        val headers = JSONObject(format.httpHeaders ?: emptyMap<String, String>()).toString()
+        val mime = if (format.isM3u8 || url.contains("m3u8", true)) {
+            MimeTypes.APPLICATION_M3U8
+        } else null
+        ContextCompat.startForegroundService(
+            requireContext(),
+            Intent(requireContext(), FloatingVideoService::class.java).apply {
+                action = FloatingVideoService.ACTION_START
+                putExtra(VideoPlayerFragment.VIDEO_URL, url)
+                putExtra(VideoPlayerFragment.VIDEO_HEADERS, headers)
+                putExtra(VideoPlayerFragment.VIDEO_NAME, videoInfo.title)
+                putExtra(VideoPlayerFragment.VIDEO_MIME, mime)
+            }
+        )
     }
 
     private fun onVideoPreviewPropagate(
@@ -343,6 +412,11 @@ class WebTabFragment : BaseWebTabFragment() {
                     putExtra(
                         VideoPlayerFragment.VIDEO_URL, currFormat.first().url
                     )
+                    if (format.contains("hls", ignoreCase = true) ||
+                        currFormat.first().url?.contains("m3u8", ignoreCase = true) == true
+                    ) {
+                        putExtra(VideoPlayerFragment.VIDEO_MIME, MimeTypes.APPLICATION_M3U8)
+                    }
                     val headersFinal = if (isForce) "{}" else headers
                     putExtra(
                         VideoPlayerFragment.VIDEO_HEADERS, headersFinal
@@ -851,5 +925,35 @@ class WebTabFragment : BaseWebTabFragment() {
             AppLogger.d("AdBlock (POST): Blocked $url")
         }
         isAd
+    }.apply {
+        onVideoStarted = { url ->
+            lifecycleScope.launch(Dispatchers.Main) {
+                switchFloatingToWebVideo(url)
+            }
+        }
+    }
+
+    private fun switchFloatingToWebVideo(url: String) {
+        if (url == lastFloatingUrl || !Settings.canDrawOverlays(requireContext())) return
+        lastFloatingUrl = url
+        val pageUrl = webTab.getUrl().orEmpty()
+        val headers = mutableMapOf<String, String>()
+        webTab.getWebView()?.settings?.userAgentString?.let { headers["User-Agent"] = it }
+        if (pageUrl.isNotBlank()) {
+            headers["Referer"] = pageUrl
+            CookieManager.getInstance().getCookie(pageUrl)?.let { headers["Cookie"] = it }
+        }
+        ContextCompat.startForegroundService(
+            requireContext(),
+            Intent(requireContext(), FloatingVideoService::class.java).apply {
+                action = FloatingVideoService.ACTION_START
+                putExtra(VideoPlayerFragment.VIDEO_URL, url)
+                putExtra(VideoPlayerFragment.VIDEO_HEADERS, JSONObject(headers).toString())
+                putExtra(VideoPlayerFragment.VIDEO_NAME, webTab.getWebView()?.title.orEmpty())
+                if (url.contains(".m3u8", ignoreCase = true)) {
+                    putExtra(VideoPlayerFragment.VIDEO_MIME, MimeTypes.APPLICATION_M3U8)
+                }
+            }
+        )
     }
 }

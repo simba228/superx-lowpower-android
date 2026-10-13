@@ -3,6 +3,8 @@ package com.myAllVideoBrowser.ui.main.home.browser
 class WebPostBridge(
     private val onIntercept: (url: String, body: String) -> Boolean
 ) {
+    var onVideoStarted: (url: String) -> Unit = {}
+
     companion object {
         const val BRIDGE_NAME = "AndroidBridge"
     }
@@ -12,5 +14,12 @@ class WebPostBridge(
         // Return true to BLOCK the request
         // Return false to let the browser CONTINUE the request
         return onIntercept(url, body)
+    }
+
+    @android.webkit.JavascriptInterface
+    fun videoStarted(url: String) {
+        if (url.startsWith("http://") || url.startsWith("https://")) {
+            onVideoStarted(url)
+        }
     }
 }

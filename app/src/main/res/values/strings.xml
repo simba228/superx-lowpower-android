@@ -1,6 +1,12 @@
 <resources>
-    <string name="app_name">SuperX</string>
-    <string name="browser_search_hint">Search in DuckDuckGo or enter url</string>
+    <string name="app_name">SuperX Low Power</string>
+    <string name="browser_search_hint">Search or enter a URL</string>
+    <string name="default_search_engine">Default search engine</string>
+    <string name="floating_video_download">Download video</string>
+    <string name="floating_video_drag">Drag floating window</string>
+    <string name="floating_video_drag_label">Drag to move</string>
+    <string name="floating_video_download_button">↓ Download</string>
+    <string name="floating_download_started">Download started</string>
 
     <string name="title_video">Video</string>
     <string name="title_progress">Progress</string>
@@ -105,6 +111,26 @@
     <string name="check_if_in_list">Only check web-sites urls if in supported list</string>
     <string name="bookmark">Bookmark</string>
     <string name="bookmarks_list">Bookmarks</string>
+    <string name="bookmark_search_hint">Search bookmarks</string>
+    <string name="bookmark_all_folders">All</string>
+    <string name="bookmark_edit">Edit bookmark</string>
+    <string name="bookmark_title_hint">Title</string>
+    <string name="bookmark_url_hint">Address</string>
+    <string name="bookmark_folder_hint">Folder (optional)</string>
+    <string name="bookmark_deleted">Bookmark deleted</string>
+    <string name="bookmark_undo">Undo</string>
+    <string name="bookmark_invalid_url">Enter a valid http or https address</string>
+    <string name="bookmark_open">Open</string>
+    <string name="bookmark_edit_action">Edit or move</string>
+    <string name="floating_video">Floating video</string>
+    <string name="floating_video_permission">Allow display over other apps, then try again</string>
+    <string name="floating_video_channel">Floating video playback</string>
+    <string name="floating_video_active">Video is playing in a floating window</string>
+    <string name="floating_video_fullscreen">Return to full screen</string>
+    <string name="floating_video_close">Close floating video</string>
+    <string name="floating_video_resize">Resize floating video</string>
+    <string name="floating_video_resize_symbol" translatable="false">↘</string>
+    <string name="bookmark_duplicate_url">This address is already bookmarked</string>
     <string name="is_auto_dark">Auto Theme Mode</string>
     <string name="check_every_request_on_audio">Check every request on audio</string>
     <string name="go">GO</string>

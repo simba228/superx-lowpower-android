@@ -135,7 +135,7 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 459
-        versionName = "0.8.25.10"
+        versionName = "0.8.25.10-lowpower.10"
 
         if (isSingleAbiRequested) {
             splits {
@@ -164,6 +164,7 @@ android {
     // Build Types
     buildTypes {
         debug {
+            applicationIdSuffix = ".lowpower"
             isMinifyEnabled = false
             isShrinkResources = false
             enableUnitTestCoverage = false
@@ -202,9 +203,6 @@ android {
 
     // Test Options
     testOptions {
-        unitTests.all {
-            it.exclude("**/*")
-        }
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
@@ -252,7 +250,7 @@ android {
                 val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl
                 val abiName = abiFilterProperty[0]
                 // This generates: app-arm64-v8a-release-unsigned.apk
-                output.outputFileName = "app-$abiName-${variant.name}-unsigned.apk"
+                output.outputFileName = "SuperX-LowPower-$abiName-${variant.name}.apk"
                 println("⚙️ F-Droid APK Rename: ${output.outputFileName}")
             }
         }

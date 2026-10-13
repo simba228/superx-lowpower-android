@@ -17,6 +17,8 @@ import java.util.Collections
 interface BookmarksListener {
     fun onBookmarkOpenClicked(view: View, bookmarkItem: PageInfo)
 
+    fun onBookmarkLongClicked(view: View, bookmarkItem: PageInfo): Boolean
+
     fun onBookmarkMove(bookmarks: MutableList<PageInfo>)
 
     fun onBookmarkDelete(bookmarks: MutableList<PageInfo>, position: Int)
@@ -39,6 +41,9 @@ class BookmarksAdapter(
             with(binding) {
                 this.bookmarkItem = bookmarkItem
                 this.bookmarksListener = bookmarksListener
+                root.setOnLongClickListener {
+                    bookmarksListener.onBookmarkLongClicked(it, bookmarkItem)
+                }
 
                 val placeholder = AppCompatResources.getDrawable(
                     ContextUtils.getApplicationContext(), R.drawable.ic_browser
@@ -74,6 +79,8 @@ class BookmarksAdapter(
         notifyDataSetChanged()
     }
 
+    fun currentItems(): List<PageInfo> = bookmarksItems.toList()
+
     override fun onItemMove(fromPosition: Int, toPosition: Int) {
         if (fromPosition < toPosition) {
             for (i in fromPosition until toPosition) {
@@ -97,11 +104,14 @@ class BookmarksAdapter(
     }
 }
 
-class ReorderableItemTouchHelperCallback(private val adapter: ItemTouchHelperAdapter) :
+class ReorderableItemTouchHelperCallback(
+    private val adapter: ItemTouchHelperAdapter,
+    private val canReorder: () -> Boolean = { true }
+) :
     ItemTouchHelper.Callback() {
 
     override fun isLongPressDragEnabled(): Boolean {
-        return true
+        return canReorder()
     }
 
     override fun isItemViewSwipeEnabled(): Boolean {
@@ -111,7 +121,7 @@ class ReorderableItemTouchHelperCallback(private val adapter: ItemTouchHelperAda
     override fun getMovementFlags(
         recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder
     ): Int {
-        val dragFlags = ItemTouchHelper.UP or ItemTouchHelper.DOWN
+        val dragFlags = if (canReorder()) ItemTouchHelper.UP or ItemTouchHelper.DOWN else 0
         val swipeFlags = ItemTouchHelper.START or ItemTouchHelper.END
         return makeMovementFlags(dragFlags, swipeFlags)
     }

@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import com.myAllVideoBrowser.data.repository.AdBlockRepository
 import com.myAllVideoBrowser.di.component.DaggerAppComponent
 import com.myAllVideoBrowser.ui.main.home.browser.adblocker.AdBlockEngine
+import com.myAllVideoBrowser.ui.main.home.browser.SearchEngine
 import com.myAllVideoBrowser.util.AppLogger
 import com.myAllVideoBrowser.util.ContextUtils
 import com.myAllVideoBrowser.util.FileUtil
@@ -81,6 +82,8 @@ open class DLApplication : DaggerApplication(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+
+        SearchEngine.current = SearchEngine.fromId(sharedPrefHelper.getSearchEngineId())
 
         checkWebViewAvailability()
 

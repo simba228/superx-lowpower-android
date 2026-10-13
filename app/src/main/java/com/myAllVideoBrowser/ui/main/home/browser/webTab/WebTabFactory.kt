@@ -1,7 +1,7 @@
 package com.myAllVideoBrowser.ui.main.home.browser.webTab
 
 import android.util.Patterns
-import com.myAllVideoBrowser.ui.main.home.browser.BrowserViewModel
+import com.myAllVideoBrowser.ui.main.home.browser.SearchEngine
 
 class WebTabFactory {
     companion object {
@@ -13,7 +13,7 @@ class WebTabFactory {
                     WebTab("https://$input", null, null, emptyMap())
                 } else {
                     WebTab(
-                        String.format(BrowserViewModel.SEARCH_URL, input),
+                        SearchEngine.current.searchUrl(input),
                         null,
                         null,
                         emptyMap())

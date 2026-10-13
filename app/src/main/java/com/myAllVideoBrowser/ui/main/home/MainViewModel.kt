@@ -33,7 +33,9 @@ class MainViewModel @Inject constructor(
 
     val isWebViewAvailable = ObservableBoolean(true)
 
-    val offScreenPageLimit = ObservableField(4)
+    // Keep only the nearest tab alive. The previous value (4) allowed several WebViews to
+    // execute JavaScript and animations at once, which is expensive on battery and memory.
+    val offScreenPageLimit = ObservableField(1)
 
     // pair - format:url
     val selectedFormatTitle = ObservableField<Pair<String, String>?>()
@@ -65,10 +67,18 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(executorMoverSingle) {
             var bookmarks = topPagesRepository.getTopPages().toMutableList()
             val faviconUrl = FaviconUtils.getFaviconUrl(url)
+            val existingIndex = bookmarks.indexOfFirst { it.link.equals(url, ignoreCase = true) }
             val newBookmark = PageInfo(
                 link = url, order = bookmarks.size, name = name, favicon = faviconUrl
             )
-            bookmarks.add(newBookmark)
+            if (existingIndex >= 0) {
+                newBookmark.id = bookmarks[existingIndex].id
+                newBookmark.order = bookmarks[existingIndex].order
+                newBookmark.folder = bookmarks[existingIndex].folder
+                bookmarks[existingIndex] = newBookmark
+            } else {
+                bookmarks.add(newBookmark)
+            }
             bookmarks = bookmarks.mapIndexed { index, pageInfo ->
                 pageInfo.order = index
                 pageInfo

@@ -39,7 +39,10 @@ data class PageInfo(
     @ColumnInfo(name = "order")
     @SerializedName("order")
     @Expose
-    var order: Int = 0
+    var order: Int = 0,
+
+    @ColumnInfo(name = "folder", defaultValue = "")
+    var folder: String = ""
 ) {
     // TODO use regex
     fun getTitleFiltered(): String {

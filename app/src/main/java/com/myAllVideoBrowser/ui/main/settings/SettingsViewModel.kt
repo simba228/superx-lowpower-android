@@ -7,6 +7,7 @@ import androidx.databinding.ObservableInt
 import androidx.lifecycle.viewModelScope
 //import com.allVideoDownloaderXmaster.OpenForTesting
 import com.myAllVideoBrowser.ui.main.base.BaseViewModel
+import com.myAllVideoBrowser.ui.main.home.browser.SearchEngine
 import com.myAllVideoBrowser.util.FileUtil
 import com.myAllVideoBrowser.util.SharedPrefHelper
 import com.myAllVideoBrowser.util.SingleLiveEvent
@@ -32,6 +33,7 @@ class SettingsViewModel @Inject constructor(
     val m3u8ThreadsCount = ObservableInt(4)
     val videoDetectionTreshold = ObservableInt(4 * 1024 * 1024)
     val storageType = ObservableField(StorageType.SD)
+    val searchEngineName = ObservableField(SearchEngine.current.displayName)
 
     val clearCookiesEvent = SingleLiveEvent<Void?>()
     val openVideoFolderEvent = SingleLiveEvent<Void?>()
@@ -81,6 +83,7 @@ class SettingsViewModel @Inject constructor(
             val askRedirection = sharedPrefHelper.getIsAskRedirection()
             val adBlockOn = sharedPrefHelper.getIsAdBlockOn()
             val downloadSubtitles = sharedPrefHelper.getIsDownloadSubtitles()
+            val searchEngine = SearchEngine.fromId(sharedPrefHelper.getSearchEngineId())
 
             val isExternal = sharedPrefHelper.getIsExternalUse()
             val isAppDir = sharedPrefHelper.getIsAppDirUse()
@@ -118,7 +121,17 @@ class SettingsViewModel @Inject constructor(
                 storageType.set(sType)
                 isAdBlockOn.set(adBlockOn)
                 isDownloadSubtitles.set(downloadSubtitles)
+                SearchEngine.current = searchEngine
+                searchEngineName.set(searchEngine.displayName)
             }
+        }
+    }
+
+    fun setSearchEngine(engine: SearchEngine) {
+        SearchEngine.current = engine
+        searchEngineName.set(engine.displayName)
+        viewModelScope.launch(Dispatchers.IO) {
+            sharedPrefHelper.setSearchEngineId(engine.id)
         }
     }
 

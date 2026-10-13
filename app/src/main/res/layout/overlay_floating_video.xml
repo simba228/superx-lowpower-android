@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.myAllVideoBrowser.ui.main.player.ResizableOverlayLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/floating_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FF000000">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/floating_player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:controller_layout_id="@layout/exo_player_control_view"
+        app:show_timeout="3000"
+        app:surface_type="surface_view"
+        app:use_controller="true" />
+
+    <LinearLayout
+        android:id="@+id/floating_top_controls"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_gravity="top"
+        android:background="#99000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/floating_close"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/floating_video_close"
+            android:src="@drawable/close_24px"
+            app:tint="@android:color/white" />
+
+        <TextView
+            android:id="@+id/floating_drag_bar"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:contentDescription="@string/floating_video_drag"
+            android:ellipsize="end"
+            android:gravity="center_vertical"
+            android:maxLines="1"
+            android:paddingHorizontal="6dp"
+            android:text="@string/floating_video_drag_label"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/floating_download"
+            android:layout_width="72dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/floating_video_download"
+            android:gravity="center"
+            android:text="@string/floating_video_download_button"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/floating_speed"
+            android:layout_width="48dp"
+            android:layout_height="36dp"
+            android:layout_marginHorizontal="2dp"
+            android:background="@drawable/floating_control_border"
+            android:gravity="center"
+            android:text="1.0×"
+            android:textColor="@android:color/white"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/floating_fullscreen"
+            android:layout_width="44dp"
+            android:layout_height="48dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/floating_video_fullscreen"
+            android:src="@drawable/floating_video_24px"
+            app:tint="@android:color/white" />
+    </LinearLayout>
+
+</com.myAllVideoBrowser.ui.main.player.ResizableOverlayLayout>
