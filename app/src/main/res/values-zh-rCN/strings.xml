@@ -5,6 +5,9 @@
     <string name="dialog_video_title">找到的视频:</string>
     <string name="browser_search_hint">搜索或输入网址</string>
     <string name="default_search_engine">默认搜索引擎</string>
+    <string name="bookmark_delete_all">清空全部书签</string>
+    <string name="bookmark_delete_all_message">确定删除全部 %1$d 个书签吗？</string>
+    <string name="bookmark_all_deleted">已删除全部书签</string>
     <string name="floating_video_download">下载视频</string>
     <string name="floating_video_drag">拖动悬浮窗</string>
     <string name="floating_video_drag_label">按住此处拖动</string>
@@ -204,4 +207,5 @@
     <string name="latestVersion">最新版</string>
     <string name="supportString">通过 BTC 支持项目</string>
     <string name="checkingForUpdatesFailed">检查更新失败。</string>
+    <string name="bookmark_delete">删除书签</string>
 </resources>

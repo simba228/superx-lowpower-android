@@ -43,6 +43,7 @@ import com.myAllVideoBrowser.ui.main.history.HistoryViewModel
 import com.myAllVideoBrowser.ui.main.home.MainActivity
 import com.myAllVideoBrowser.ui.main.home.MainViewModel
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.GlobalVideoDetectionModel
+import com.myAllVideoBrowser.ui.main.home.browser.adblocker.AdBlockEngine
 import com.myAllVideoBrowser.ui.main.home.browser.homeTab.BrowserHomeFragment
 import com.myAllVideoBrowser.ui.main.home.browser.webTab.WebTab
 import com.myAllVideoBrowser.ui.main.home.browser.webTab.WebTabFragment
@@ -145,6 +146,9 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
     @Inject
     lateinit var okHttpProxyClient: OkHttpProxyClient
 
+    @Inject
+    lateinit var adBlockEngine: AdBlockEngine
+
     @VisibleForTesting
     internal lateinit var dataBinding: FragmentBrowserBinding
 
@@ -223,12 +227,19 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
                     lifecycleScope.launch(Dispatchers.Main) {
                         if (requestWithCookies != null && isM3u8Check) {
                             if (contentType == ContentType.M3U8 || obviousM3u8) {
-                                openWorkerVideoImmediately(requestWithCookies)
+                                openWorkerVideoImmediately(requestWithCookies, MimeTypes.APPLICATION_M3U8)
+                            } else if (contentType == ContentType.MPD || obviousMpd) {
+                                openWorkerVideoImmediately(requestWithCookies, MimeTypes.APPLICATION_MPD)
                             }
                             videoDetectionModel.verifyLinkStatus(requestWithCookies, "", true)
                         }
                     }
                 } else if (contentType == ContentType.VIDEO && isMp4Check || contentType == ContentType.AUDIO && isCheckOnAudio) {
+                    if (contentType == ContentType.VIDEO && requestWithCookies != null) {
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            openWorkerVideoImmediately(requestWithCookies, null)
+                        }
+                    }
                     videoDetectionModel.checkRegularVideoOrAudio(
                         requestWithCookies,
                         isCheckOnAudio,
@@ -241,8 +252,13 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
         }
     }
 
-    private fun openWorkerVideoImmediately(request: okhttp3.Request) {
+    private fun openWorkerVideoImmediately(request: okhttp3.Request, mime: String?) {
         val url = request.url.toString()
+        val sourceUrl = request.header("Referer").orEmpty()
+        if (settingsModel.isAdBlockOn.get() && adBlockEngine.isAd(url, sourceUrl, "media")) {
+            AppLogger.d("ServiceWorker floating video ignored by ad blocker")
+            return
+        }
         if (url == lastWorkerFloatingUrl || !Settings.canDrawOverlays(requireContext())) return
         lastWorkerFloatingUrl = url
         val headers = JSONObject(request.headers.toMap()).toString()
@@ -253,7 +269,7 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
                 putExtra(VideoPlayerFragment.VIDEO_URL, url)
                 putExtra(VideoPlayerFragment.VIDEO_HEADERS, headers)
                 putExtra(VideoPlayerFragment.VIDEO_NAME, getString(R.string.floating_video))
-                putExtra(VideoPlayerFragment.VIDEO_MIME, MimeTypes.APPLICATION_M3U8)
+                putExtra(VideoPlayerFragment.VIDEO_MIME, mime)
             }
         )
         AppLogger.d("Fast floating video from ServiceWorker: HLS")

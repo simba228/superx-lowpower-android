@@ -29,7 +29,7 @@ object RecyclerViewBinding {
         }
     }
 
-    @BindingAdapter("app:items")
+    @BindingAdapter("app:topPageItems")
     @JvmStatic
     fun RecyclerView.setTopPages(items: List<PageInfo>) {
         with(adapter as TopPageAdapter?) {

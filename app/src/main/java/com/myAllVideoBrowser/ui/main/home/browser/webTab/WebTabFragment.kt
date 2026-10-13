@@ -62,6 +62,7 @@ import com.myAllVideoBrowser.ui.main.home.browser.WorkerEventProvider
 import com.myAllVideoBrowser.ui.main.home.browser.adblocker.AdBlockEngine
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.DetectedVideosTabFragment
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.VideoDetectionTabViewModel
+import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.DetectedVideoResource
 import com.myAllVideoBrowser.ui.main.player.VideoPlayerActivity
 import com.myAllVideoBrowser.ui.main.player.VideoPlayerFragment
 import com.myAllVideoBrowser.ui.main.player.FloatingVideoService
@@ -122,6 +123,7 @@ class WebTabFragment : BaseWebTabFragment() {
     private var canGoCounter = 0
     private var pendingFloatingVideo: VideoInfo? = null
     private var lastFloatingUrl = ""
+    private var hasVerifiedFloatingResource = false
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -277,6 +279,7 @@ class WebTabFragment : BaseWebTabFragment() {
         handleWorkerEvent()
         handleOpenDetectedVideos()
         handleVideoPushed()
+        handlePlayableResource()
         tabViewModel.start()
         videoDetectionTabViewModel.start()
     }
@@ -316,30 +319,62 @@ class WebTabFragment : BaseWebTabFragment() {
     }
 
     private fun handleVideoPushed() {
-        videoDetectionTabViewModel.videoPushedEvent.observe(viewLifecycleOwner) {
-            onVideoPushed()
+        videoDetectionTabViewModel.pageChangedEvent.observe(viewLifecycleOwner) {
+            hasVerifiedFloatingResource = false
+            lastFloatingUrl = ""
+        }
+        videoDetectionTabViewModel.videoPushedEvent.observe(viewLifecycleOwner) { videoInfo ->
+            onVideoPushed(videoInfo)
         }
     }
 
-    private fun onVideoPushed() {
-        showToastVideoFound()
+    private fun handlePlayableResource() {
+        videoDetectionTabViewModel.playableResourceEvent.observe(viewLifecycleOwner) { resource ->
+            startDetectedResource(resource)
+        }
+    }
 
-        val detected = (videoDetectionTabViewModel.downloadButtonState.get()
-            as? DownloadButtonStateCanDownload)?.info
-        if (detected != null) {
-            autoOpenFloatingVideo(detected)
+    private fun startDetectedResource(resource: DetectedVideoResource) {
+        if (!Settings.canDrawOverlays(requireContext())) return
+        // Raw responses make the popup appear quickly, but once the detector has
+        // produced the same verified item shown by the download panel, late
+        // manifests/ads/quality variants must not replace that authoritative item.
+        if (hasVerifiedFloatingResource) return
+        val url = resource.request.url.toString()
+        val sourceUrl = webTab.getUrl().orEmpty()
+        if (mainActivity.settingsViewModel.isAdBlockOn.get() &&
+            adBlockEngine.isAd(url, sourceUrl, "media")
+        ) {
+            AppLogger.d("Floating video ignored by ad blocker")
             return
         }
-
-        val isDownloadsVisible = isDetectedVideosTabFragmentVisible()
-        val isCond = !tabViewModel.isDownloadDialogShown.get() && !isDownloadsVisible
-        if (context != null && mainActivity.settingsViewModel.getVideoAlertState()
-                .get() && isCond
-        ) {
-            lifecycleScope.launch(Dispatchers.Main) {
-                showAlertVideoFound()
-            }
+        if (url == lastFloatingUrl) return
+        lastFloatingUrl = url
+        val mime = when {
+            resource.isM3u8 -> MimeTypes.APPLICATION_M3U8
+            resource.isMpd -> MimeTypes.APPLICATION_MPD
+            else -> null
         }
+        ContextCompat.startForegroundService(
+            requireContext(),
+            Intent(requireContext(), FloatingVideoService::class.java).apply {
+                action = FloatingVideoService.ACTION_START
+                putExtra(VideoPlayerFragment.VIDEO_URL, url)
+                putExtra(
+                    VideoPlayerFragment.VIDEO_HEADERS,
+                    JSONObject(resource.request.headers.toMap()).toString()
+                )
+                putExtra(VideoPlayerFragment.VIDEO_NAME, webTab.getWebView()?.title.orEmpty())
+                putExtra(VideoPlayerFragment.VIDEO_MIME, mime)
+            }
+        )
+    }
+
+    private fun onVideoPushed(videoInfo: VideoInfo) {
+        showToastVideoFound()
+
+        hasVerifiedFloatingResource = true
+        autoOpenFloatingVideo(videoInfo)
     }
 
     private fun autoOpenFloatingVideo(videoInfo: VideoInfo) {
@@ -934,7 +969,14 @@ class WebTabFragment : BaseWebTabFragment() {
     }
 
     private fun switchFloatingToWebVideo(url: String) {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            // A blob URL means a new in-page video started. Its real network
+            // resource will arrive next, so allow the fast detector to select it.
+            hasVerifiedFloatingResource = false
+            return
+        }
         if (url == lastFloatingUrl || !Settings.canDrawOverlays(requireContext())) return
+        hasVerifiedFloatingResource = true
         lastFloatingUrl = url
         val pageUrl = webTab.getUrl().orEmpty()
         val headers = mutableMapOf<String, String>()

@@ -18,6 +18,7 @@ import com.myAllVideoBrowser.util.proxy_utils.OkHttpProxyClient
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.myAllVideoBrowser.R
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.IVideoDetector
+import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.DetectedVideoResource
 import com.myAllVideoBrowser.ui.main.home.browser.webTab.WebTab
 import com.myAllVideoBrowser.ui.main.home.browser.webTab.WebTabViewModel
 import com.myAllVideoBrowser.util.CookieUtils
@@ -258,6 +259,9 @@ class CustomWebViewClient(
                     val isMpd = ContentType.MPD == contentType || url.contains(".mpd")
 
                     if (requestWithCookies != null && isCheckM3u8) {
+                        videoDetectionModel.notifyPlayableResource(
+                            DetectedVideoResource(requestWithCookies, isM3u8, isMpd)
+                        )
                         videoDetectionModel.verifyLinkStatus(
                             requestWithCookies, tabViewModel.currentTitle.get(), isM3u8, isMpd
                         )
@@ -269,6 +273,11 @@ class CustomWebViewClient(
 
                 else -> {
                     if ((isCheckOnMp4 || isCheckOnAudio) && contentType != ContentType.OTHER) {
+                        if (contentType == ContentType.VIDEO && requestWithCookies != null) {
+                            videoDetectionModel.notifyPlayableResource(
+                                DetectedVideoResource(requestWithCookies)
+                            )
+                        }
                         val disposable = videoDetectionModel.checkRegularVideoOrAudio(
                             requestWithCookies,
                             isCheckOnAudio,

@@ -4,7 +4,9 @@
     android:id="@+id/floating_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF000000">
+    android:background="@drawable/floating_window_background"
+    android:clipToOutline="true"
+    android:elevation="10dp">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/floating_player_view"
@@ -18,16 +20,16 @@
     <LinearLayout
         android:id="@+id/floating_top_controls"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
+        android:layout_height="44dp"
         android:layout_gravity="top"
-        android:background="#99000000"
+        android:background="@drawable/floating_top_gradient"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
         <ImageButton
             android:id="@+id/floating_close"
-            android:layout_width="44dp"
-            android:layout_height="48dp"
+            android:layout_width="40dp"
+            android:layout_height="44dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_video_close"
             android:src="@drawable/close_24px"
@@ -50,32 +52,32 @@
 
         <TextView
             android:id="@+id/floating_download"
-            android:layout_width="72dp"
-            android:layout_height="48dp"
+            android:layout_width="62dp"
+            android:layout_height="44dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_video_download"
             android:gravity="center"
             android:text="@string/floating_video_download_button"
             android:textColor="@android:color/white"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/floating_speed"
-            android:layout_width="48dp"
-            android:layout_height="36dp"
+            android:layout_width="44dp"
+            android:layout_height="32dp"
             android:layout_marginHorizontal="2dp"
             android:background="@drawable/floating_control_border"
             android:gravity="center"
             android:text="1.0×"
             android:textColor="@android:color/white"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
         <ImageButton
             android:id="@+id/floating_fullscreen"
-            android:layout_width="44dp"
-            android:layout_height="48dp"
+            android:layout_width="40dp"
+            android:layout_height="44dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_video_fullscreen"
             android:src="@drawable/floating_video_24px"

@@ -46,10 +46,14 @@ class BookmarksFragment : BaseFragment() {
 
     private val bookmarksChanged = object : Observable.OnPropertyChangedCallback() {
         override fun onPropertyChanged(sender: Observable?, propertyId: Int) {
-            allBookmarks = mainActivity.mainViewModel.bookmarksList.get()?.toMutableList()
-                ?: mutableListOf()
-            rebuildFolderChips()
-            applyFilter()
+            if (!::binding.isInitialized) return
+            binding.root.post {
+                if (!isAdded || view == null) return@post
+                allBookmarks = mainActivity.mainViewModel.bookmarksList.get()?.toMutableList()
+                    ?: mutableListOf()
+                rebuildFolderChips()
+                applyFilter()
+            }
         }
     }
 
@@ -66,6 +70,13 @@ class BookmarksFragment : BaseFragment() {
             )
             bookmarksList.adapter = adapter
             toolbar.setNavigationOnClickListener { parentFragmentManager.popBackStack() }
+            toolbar.inflateMenu(R.menu.bookmarks_menu)
+            toolbar.setOnMenuItemClickListener { item ->
+                if (item.itemId == R.id.action_delete_all_bookmarks) {
+                    confirmDeleteAllBookmarks()
+                    true
+                } else false
+            }
             bookmarkSearch.doAfterTextChanged {
                 query = it?.toString()?.trim()?.lowercase().orEmpty()
                 applyFilter()
@@ -233,6 +244,32 @@ class BookmarksFragment : BaseFragment() {
         Snackbar.make(binding.root, R.string.bookmark_deleted, Snackbar.LENGTH_LONG)
             .setAction(R.string.bookmark_undo) {
                 allBookmarks.add(index.coerceAtMost(allBookmarks.size), bookmark)
+                persist()
+                rebuildFolderChips()
+                applyFilter()
+            }.show()
+    }
+
+    private fun confirmDeleteAllBookmarks() {
+        if (allBookmarks.isEmpty()) return
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.bookmark_delete_all)
+            .setMessage(getString(R.string.bookmark_delete_all_message, allBookmarks.size))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.delete) { _, _ -> deleteAllWithUndo() }
+            .show()
+    }
+
+    private fun deleteAllWithUndo() {
+        val deleted = allBookmarks.toList()
+        allBookmarks.clear()
+        selectedFolder = ""
+        persist()
+        rebuildFolderChips()
+        applyFilter()
+        Snackbar.make(binding.root, R.string.bookmark_all_deleted, Snackbar.LENGTH_LONG)
+            .setAction(R.string.bookmark_undo) {
+                allBookmarks = deleted.toMutableList()
                 persist()
                 rebuildFolderChips()
                 applyFilter()

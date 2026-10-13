@@ -12,12 +12,17 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.ItemTouchHelper
+import com.google.android.material.snackbar.Snackbar
+import com.myAllVideoBrowser.R
 import com.myAllVideoBrowser.data.local.model.Suggestion
 import com.myAllVideoBrowser.data.local.room.entity.PageInfo
 import com.myAllVideoBrowser.databinding.FragmentBrowserHomeBinding
 import com.myAllVideoBrowser.ui.component.adapter.SuggestionAdapter
 import com.myAllVideoBrowser.ui.component.adapter.SuggestionListener
 import com.myAllVideoBrowser.ui.component.adapter.TopPageAdapter
+import com.myAllVideoBrowser.ui.component.adapter.ReorderableItemTouchHelperCallback
 import com.myAllVideoBrowser.ui.main.home.MainViewModel
 import com.myAllVideoBrowser.ui.main.home.browser.BaseWebTabFragment
 import com.myAllVideoBrowser.ui.main.home.browser.BrowserListener
@@ -77,7 +82,7 @@ class BrowserHomeFragment : BaseWebTabFragment() {
         homeViewModel = ViewModelProvider(this, viewModelFactory)[BrowserHomeViewModel::class.java]
         openPageIProvider = mainActivity.mainViewModel.browserServicesProvider!!
 
-        topPageAdapter = TopPageAdapter(requireContext(), emptyList(), itemListener)
+        topPageAdapter = TopPageAdapter(mutableListOf(), itemListener)
         suggestionAdapter = SuggestionAdapter(requireContext(), emptyList(), suggestionListener)
 
         binding = FragmentBrowserHomeBinding.inflate(inflater, container, false).apply {
@@ -87,6 +92,7 @@ class BrowserHomeFragment : BaseWebTabFragment() {
             this.mainVModel = mainViewModel
             this.browserMenuListener = menuListener
             this.topPagesGrid.adapter = topPageAdapter
+            this.topPagesGrid.layoutManager = GridLayoutManager(requireContext(), 4)
 
             this.homeEtSearch.setAdapter(suggestionAdapter)
             this.homeEtSearch.addTextChangedListener(onInputHomeSearchChangeListener)
@@ -110,6 +116,16 @@ class BrowserHomeFragment : BaseWebTabFragment() {
                 }
             }
         }
+
+        ItemTouchHelper(
+            ReorderableItemTouchHelperCallback(
+                topPageAdapter,
+                canReorder = { !topPageAdapter.isInEditMode() },
+                canSwipe = { topPageAdapter.isInEditMode() },
+                onDragStarted = { topPageAdapter.enterEditMode() }
+            )
+        )
+            .attachToRecyclerView(binding.topPagesGrid)
 
         return binding.root
     }
@@ -173,6 +189,26 @@ class BrowserHomeFragment : BaseWebTabFragment() {
     private val itemListener = object : TopPageAdapter.TopPagesListener {
         override fun onItemClicked(pageInfo: PageInfo) {
             openNewTab(pageInfo.link)
+        }
+
+        override fun onOrderChanged(items: List<PageInfo>) {
+            mainViewModel.updateBookmarks(items)
+        }
+
+        override fun onItemDeleted(
+            pageInfo: PageInfo,
+            position: Int,
+            remaining: List<PageInfo>
+        ) {
+            mainViewModel.updateBookmarks(remaining)
+            Snackbar.make(binding.root, R.string.bookmark_deleted, Snackbar.LENGTH_LONG)
+                .setAction(R.string.bookmark_undo) {
+                    val restored = topPageAdapter.currentItems().toMutableList()
+                    restored.add(position.coerceAtMost(restored.size), pageInfo)
+                    topPageAdapter.setData(restored)
+                    mainViewModel.updateBookmarks(restored)
+                }
+                .show()
         }
     }
 

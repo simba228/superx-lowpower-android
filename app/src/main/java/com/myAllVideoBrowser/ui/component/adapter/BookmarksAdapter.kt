@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.databinding.DataBindingUtil
 import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.myAllVideoBrowser.R
@@ -97,6 +98,7 @@ class BookmarksAdapter(
     }
 
     override fun onItemDismiss(position: Int) {
+        if (position !in bookmarksItems.indices) return
         val bookmarksClone = bookmarksItems.toMutableList()
         bookmarksItems.removeAt(position)
         notifyItemRemoved(position)
@@ -106,7 +108,9 @@ class BookmarksAdapter(
 
 class ReorderableItemTouchHelperCallback(
     private val adapter: ItemTouchHelperAdapter,
-    private val canReorder: () -> Boolean = { true }
+    private val canReorder: () -> Boolean = { true },
+    private val canSwipe: () -> Boolean = { true },
+    private val onDragStarted: () -> Unit = {}
 ) :
     ItemTouchHelper.Callback() {
 
@@ -115,14 +119,18 @@ class ReorderableItemTouchHelperCallback(
     }
 
     override fun isItemViewSwipeEnabled(): Boolean {
-        return true
+        return canSwipe()
     }
 
     override fun getMovementFlags(
         recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder
     ): Int {
-        val dragFlags = if (canReorder()) ItemTouchHelper.UP or ItemTouchHelper.DOWN else 0
-        val swipeFlags = ItemTouchHelper.START or ItemTouchHelper.END
+        val dragFlags = if (!canReorder()) 0 else if (recyclerView.layoutManager is GridLayoutManager) {
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
+        } else {
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN
+        }
+        val swipeFlags = if (canSwipe()) ItemTouchHelper.START or ItemTouchHelper.END else 0
         return makeMovementFlags(dragFlags, swipeFlags)
     }
 
@@ -135,7 +143,13 @@ class ReorderableItemTouchHelperCallback(
         return true
     }
 
+    override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+        super.onSelectedChanged(viewHolder, actionState)
+        if (actionState == ItemTouchHelper.ACTION_STATE_DRAG) onDragStarted()
+    }
+
     override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-        adapter.onItemDismiss(viewHolder.bindingAdapterPosition)
+        val position = viewHolder.bindingAdapterPosition
+        if (position != RecyclerView.NO_POSITION) adapter.onItemDismiss(position)
     }
 }

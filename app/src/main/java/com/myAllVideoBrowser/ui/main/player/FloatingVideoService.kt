@@ -115,7 +115,8 @@ class FloatingVideoService : Service() {
         val density = resources.displayMetrics.density
         val defaultWidth = (320 * density).roundToInt()
         val width = prefs.getInt("width", defaultWidth)
-        val height = prefs.getInt("height", width * 9 / 16)
+        // Older builds persisted an extra toolbar height. Normalize every regular window to 16:9.
+        val height = width * 9 / 16
         val overlayType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {

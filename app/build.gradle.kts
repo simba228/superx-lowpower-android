@@ -135,7 +135,7 @@ android {
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 459
-        versionName = "0.8.25.10-lowpower.10"
+        versionName = "0.8.25.10-lowpower.16"
 
         if (isSingleAbiRequested) {
             splits {

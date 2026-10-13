@@ -18,7 +18,7 @@ class WebPostBridge(
 
     @android.webkit.JavascriptInterface
     fun videoStarted(url: String) {
-        if (url.startsWith("http://") || url.startsWith("https://")) {
+        if (url.isNotBlank()) {
             onVideoStarted(url)
         }
     }

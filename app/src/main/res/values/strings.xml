@@ -2,6 +2,9 @@
     <string name="app_name">SuperX Low Power</string>
     <string name="browser_search_hint">Search or enter a URL</string>
     <string name="default_search_engine">Default search engine</string>
+    <string name="bookmark_delete_all">Delete all bookmarks</string>
+    <string name="bookmark_delete_all_message">Delete all %1$d bookmarks?</string>
+    <string name="bookmark_all_deleted">All bookmarks deleted</string>
     <string name="floating_video_download">Download video</string>
     <string name="floating_video_drag">Drag floating window</string>
     <string name="floating_video_drag_label">Drag to move</string>
@@ -214,4 +217,5 @@
     <string name="latestVersion">Latest version</string>
     <string name="supportString">Project support BTC</string>
     <string name="checkingForUpdatesFailed">Failed to check for updates.</string>
+    <string name="bookmark_delete">Delete bookmark</string>
 </resources>

@@ -64,7 +64,15 @@ open class VideoDetectionTabViewModel @Inject constructor(
 
     val showDetectedVideosEvent = SingleLiveEvent<Void?>()
 
-    val videoPushedEvent = SingleLiveEvent<Void?>()
+    val videoPushedEvent = SingleLiveEvent<VideoInfo>()
+
+    val pageChangedEvent = SingleLiveEvent<String>()
+
+    val playableResourceEvent = SingleLiveEvent<DetectedVideoResource>()
+
+    override fun notifyPlayableResource(resource: DetectedVideoResource) {
+        playableResourceEvent.postValue(resource)
+    }
 
     @Volatile
     var downloadButtonState =
@@ -151,6 +159,7 @@ open class VideoDetectionTabViewModel @Inject constructor(
             return
         }
         lastUrl = url
+        pageChangedEvent.postValue(url)
         downloadButtonState.set(DownloadButtonStateCanNotDownload())
 
         if (url != initialUrl) {
@@ -320,7 +329,7 @@ open class VideoDetectionTabViewModel @Inject constructor(
         setButtonState(DownloadButtonStateCanDownload(newInfo))
 
         viewModelScope.launch(Dispatchers.Main) {
-            videoPushedEvent.call()
+            videoPushedEvent.value = newInfo
         }
     }
 

@@ -1,45 +1,41 @@
 package com.myAllVideoBrowser.ui.component.adapter
 
-import android.content.Context
 import android.graphics.PorterDuff
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import androidx.appcompat.content.res.AppCompatResources
-import androidx.databinding.DataBindingUtil
 import androidx.recyclerview.widget.RecyclerView
+import androidx.core.view.isVisible
 import com.bumptech.glide.Glide
 import com.google.android.material.color.MaterialColors
 import com.myAllVideoBrowser.R
 import com.myAllVideoBrowser.data.local.room.entity.PageInfo
 import com.myAllVideoBrowser.databinding.ItemTopPageBinding
-import com.myAllVideoBrowser.util.ContextUtils
+import java.util.Collections
 
 class TopPageAdapter(
-    context: Context,
-    private var pageInfos: List<PageInfo>,
+    private var pageInfos: MutableList<PageInfo>,
     private val itemListener: TopPagesListener
-) : ArrayAdapter<TopPageAdapter.TopPageViewHolder>(context, R.layout.item_top_page) {
-    override fun getView(position: Int, view: View?, parent: ViewGroup): View {
-        val binding = if (view == null) {
-            val inflater = LayoutInflater.from(parent.context)
-            ItemTopPageBinding.inflate(inflater, parent, false)
-        } else {
-            DataBindingUtil.getBinding(view)
-        }
+) : RecyclerView.Adapter<TopPageAdapter.TopPageViewHolder>(), ItemTouchHelperAdapter {
 
-        with(binding) {
-            val page = pageInfos[position]
-            this?.pageInfo = page
-            this?.listener = itemListener
+    private var editMode = false
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TopPageViewHolder =
+        TopPageViewHolder(ItemTopPageBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+
+    override fun onBindViewHolder(holder: TopPageViewHolder, position: Int) {
+        val page = pageInfos[position]
+        with(holder.binding) {
+            pageInfo = page
+            listener = itemListener
             
             val placeholder = AppCompatResources.getDrawable(
-                context, R.drawable.ic_browser
+                root.context, R.drawable.ic_browser
             )?.apply {
                 setColorFilter(
                     MaterialColors.getColor(
-                        context,
+                        root.context,
                         com.google.android.material.R.attr.colorOnSurfaceVariant,
                         android.graphics.Color.GRAY
                     ),
@@ -47,7 +43,7 @@ class TopPageAdapter(
                 )
             }
 
-            this?.imgIcon?.let { imageView ->
+            imgIcon.let { imageView ->
                 Glide.with(imageView.context)
                     .load(page.favicon)
                     .placeholder(placeholder)
@@ -56,30 +52,65 @@ class TopPageAdapter(
                     .into(imageView)
             }
 
-            this?.executePendingBindings()
+            deleteBookmark.setOnClickListener {
+                val adapterPosition = holder.bindingAdapterPosition
+                if (adapterPosition != RecyclerView.NO_POSITION) deleteAt(adapterPosition)
+            }
+            deleteBookmark.isVisible = editMode
+            root.setOnLongClickListener(if (editMode) {
+                View.OnLongClickListener {
+                    exitEditMode()
+                    true
+                }
+            } else null)
+            executePendingBindings()
         }
-
-        return binding!!.root
     }
 
-    override fun getItemId(position: Int) = try {
-        pageInfos[position].hashCode().toLong()
-    } catch (e: Throwable) {
-        0
-    }
-
-    override fun getCount(): Int {
-        return pageInfos.size
-    }
+    override fun getItemCount() = pageInfos.size
 
     class TopPageViewHolder(val binding: ItemTopPageBinding) : RecyclerView.ViewHolder(binding.root)
 
     fun setData(pageInfos: List<PageInfo>) {
-        this.pageInfos = pageInfos
+        this.pageInfos = pageInfos.toMutableList()
         notifyDataSetChanged()
+    }
+
+    fun currentItems(): List<PageInfo> = pageInfos.toList()
+
+    fun enterEditMode() {
+        if (editMode) return
+        editMode = true
+        notifyItemRangeChanged(0, itemCount)
+    }
+
+    fun isInEditMode(): Boolean = editMode
+
+    private fun exitEditMode() {
+        if (!editMode) return
+        editMode = false
+        notifyItemRangeChanged(0, itemCount)
+    }
+
+    override fun onItemMove(fromPosition: Int, toPosition: Int) {
+        if (fromPosition !in pageInfos.indices || toPosition !in pageInfos.indices) return
+        Collections.swap(pageInfos, fromPosition, toPosition)
+        notifyItemMoved(fromPosition, toPosition)
+        itemListener.onOrderChanged(pageInfos.toList())
+    }
+
+    override fun onItemDismiss(position: Int) = deleteAt(position)
+
+    private fun deleteAt(position: Int) {
+        if (position !in pageInfos.indices) return
+        val deleted = pageInfos.removeAt(position)
+        notifyItemRemoved(position)
+        itemListener.onItemDeleted(deleted, position, pageInfos.toList())
     }
 
     interface TopPagesListener {
         fun onItemClicked(pageInfo: PageInfo)
+        fun onOrderChanged(items: List<PageInfo>)
+        fun onItemDeleted(pageInfo: PageInfo, position: Int, remaining: List<PageInfo>)
     }
 }

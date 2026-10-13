@@ -5,6 +5,12 @@ import androidx.databinding.ObservableInt
 import io.reactivex.rxjava3.disposables.Disposable
 import okhttp3.Request
 
+data class DetectedVideoResource(
+    val request: Request,
+    val isM3u8: Boolean = false,
+    val isMpd: Boolean = false
+)
+
 interface IVideoDetector {
     fun onStartPage(url: String, userAgentString: String)
 
@@ -16,6 +22,8 @@ interface IVideoDetector {
         isM3u8: Boolean = false,
         isMpd: Boolean = false
     )
+
+    fun notifyPlayableResource(resource: DetectedVideoResource)
 
     fun getDownloadBtnIcon(): ObservableInt
 
