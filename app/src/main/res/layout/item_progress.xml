@@ -49,6 +49,19 @@
                 app:layout_constraintTop_toTopOf="parent"
                 app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.App.rounded" />
 
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/selection_checkbox"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_margin="4dp"
+                android:background="?attr/colorSurfaceContainerHighest"
+                android:buttonTint="?attr/colorPrimary"
+                android:contentDescription="@string/select_all"
+                android:gravity="center"
+                android:visibility="gone"
+                app:layout_constraintStart_toStartOf="@id/iv_thumbnail"
+                app:layout_constraintTop_toTopOf="@id/iv_thumbnail" />
+
             <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/tv_title"
                 style="@style/TextAppearance.Material3.TitleMedium"

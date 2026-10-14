@@ -10,11 +10,13 @@ import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
+import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import androidx.media3.common.MediaItem
@@ -43,6 +45,8 @@ class FloatingVideoService : Service() {
         const val ACTION_DOWNLOAD = "floating_video_download"
         private const val CHANNEL_ID = "floating_video"
         private const val NOTIFICATION_ID = 4107
+        private const val MAX_SWIPE_SEEK_MS = 120_000L
+        private const val MIN_SWIPE_SEEK_MS = 5_000L
     }
 
     private lateinit var windowManager: WindowManager
@@ -154,6 +158,7 @@ class FloatingVideoService : Service() {
         player = exoPlayer
         val playerView = view.findViewById<PlayerView>(R.id.floating_player_view)
         playerView.player = exoPlayer
+        configureSeekGestures(playerView, exoPlayer)
         val mediaItem = MediaItem.Builder().setUri(uri).apply {
             if (!videoMime.isNullOrBlank()) setMimeType(videoMime)
             else if (videoUrl.contains("m3u8", ignoreCase = true)) setMimeType(MimeTypes.APPLICATION_M3U8)
@@ -180,6 +185,12 @@ class FloatingVideoService : Service() {
             toggleFloatingFullscreen(layoutParams)
         }
         view.findViewById<View>(R.id.floating_download).setOnClickListener { downloadVideo() }
+        view.findViewById<View>(R.id.floating_settings).setOnClickListener {
+            playerView.showController()
+            playerView.post {
+                playerView.findViewById<View>(androidx.media3.ui.R.id.exo_settings)?.performClick()
+            }
+        }
         val speedButton = view.findViewById<TextView>(R.id.floating_speed)
         val speeds = floatArrayOf(1f, 1.25f, 1.5f, 2f, 0.75f)
         var speedIndex = 0
@@ -188,6 +199,49 @@ class FloatingVideoService : Service() {
             exoPlayer.setPlaybackSpeed(speeds[speedIndex])
             speedButton.text = "${speeds[speedIndex]}×"
         }
+    }
+
+    private fun configureSeekGestures(playerView: PlayerView, exoPlayer: ExoPlayer) {
+        val minDistance = 64 * resources.displayMetrics.density
+        val detector = GestureDetector(
+            this,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(event: MotionEvent): Boolean = false
+
+                override fun onFling(
+                    down: MotionEvent?,
+                    up: MotionEvent,
+                    velocityX: Float,
+                    velocityY: Float
+                ): Boolean {
+                    val start = down ?: return false
+                    val distanceX = up.x - start.x
+                    val distanceY = up.y - start.y
+                    if (kotlin.math.abs(distanceX) < minDistance ||
+                        kotlin.math.abs(distanceX) <= kotlin.math.abs(distanceY)
+                    ) return false
+
+                    val width = playerView.width.coerceAtLeast(1).toFloat()
+                    val proportionalOffset =
+                        (distanceX / width * MAX_SWIPE_SEEK_MS).toLong()
+                    val offset = if (proportionalOffset >= 0) {
+                        proportionalOffset.coerceIn(MIN_SWIPE_SEEK_MS, MAX_SWIPE_SEEK_MS)
+                    } else {
+                        proportionalOffset.coerceIn(-MAX_SWIPE_SEEK_MS, -MIN_SWIPE_SEEK_MS)
+                    }
+                    val duration = exoPlayer.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+                    exoPlayer.seekTo((exoPlayer.currentPosition + offset).coerceIn(0L, duration))
+                    val seconds = kotlin.math.abs(offset) / 1000
+                    Toast.makeText(
+                        this@FloatingVideoService,
+                        if (offset > 0) "+${seconds}s" else "-${seconds}s",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return true
+                }
+            }
+        )
+        playerView.setOnTouchListener { _, event -> detector.onTouchEvent(event) }
     }
 
     private fun configureDrag(handle: View, layoutParams: WindowManager.LayoutParams) {

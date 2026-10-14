@@ -136,13 +136,14 @@ class SettingsFragment : BaseFragment() {
         val maxThreads = coreCount.coerceIn(1, ABSOLUTE_MAX_THREADS).toFloat()
 
         dataBinding.seekBarRegular.valueTo = maxThreads
-        dataBinding.seekBarM3u8.valueTo = maxThreads
+        dataBinding.seekBarM3u8.valueFrom = 2f
+        dataBinding.seekBarM3u8.valueTo = 6f
 
         lastSavedRegularThreadsCount = settingsViewModel.regularThreadsCount.get()
         dataBinding.seekBarRegular.value =
             lastSavedRegularThreadsCount.coerceIn(1, maxThreads.toInt()).toFloat()
         dataBinding.seekBarM3u8.value =
-            settingsViewModel.m3u8ThreadsCount.get().coerceIn(1, maxThreads.toInt()).toFloat()
+            settingsViewModel.m3u8ThreadsCount.get().coerceIn(2, 6).toFloat()
         dataBinding.seekBarAdsTreshold.value =
             settingsViewModel.videoDetectionTreshold.get().toFloat().coerceIn(0f, 52428800f)
     }

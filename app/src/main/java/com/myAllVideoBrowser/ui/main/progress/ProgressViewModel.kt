@@ -19,6 +19,9 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.rx3.asFlow
 import kotlinx.coroutines.withContext
+import android.net.Uri
+import android.widget.Toast
+import com.myAllVideoBrowser.R
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -76,6 +79,21 @@ class ProgressViewModel @Inject constructor(
         }
     }
 
+    fun cancelDownloads(ids: Set<Long>, removeFile: Boolean) {
+        viewModelScope.launch(singleThreadExecutor) {
+            val selected = progressInfos.get().orEmpty().filter { it.downloadId in ids }
+            val videos = selected.mapNotNull { VideoMetadataManager.getVideoInfo(it.id) }
+            selected.forEach { deleteProgressInfo(it) }
+            systemDownloadManager.cancelDownloads(
+                ContextUtils.getApplicationContext(),
+                videos,
+                removeFile
+            )
+            val selectedTaskIds = selected.map { it.id }.toSet()
+            progressInfos.set(progressInfos.get().orEmpty().filterNot { it.id in selectedTaskIds })
+        }
+    }
+
     fun pauseDownload(id: Long) {
         viewModelScope.launch(singleThreadExecutor) {
             val inf = progressInfos.get()?.find { it.downloadId == id }
@@ -106,9 +124,64 @@ class ProgressViewModel @Inject constructor(
         }
     }
 
+    fun pauseAllDownloads() {
+        viewModelScope.launch(singleThreadExecutor) {
+            val ctx = ContextUtils.getApplicationContext()
+            val videos = progressInfos.get().orEmpty()
+                .filter { it.downloadStatus != VideoTaskState.PAUSE }
+                .mapNotNull { info ->
+                    VideoMetadataManager.getVideoInfo(info.id)?.let { video ->
+                        saveProgressInfo(info.copy(downloadStatus = VideoTaskState.PAUSE))
+                        video
+                    }
+                }
+            systemDownloadManager.pauseAllDownloads(ctx, videos)
+        }
+    }
+
+    fun resumeAllDownloads() {
+        viewModelScope.launch(singleThreadExecutor) {
+            val ctx = ContextUtils.getApplicationContext()
+            progressInfos.get().orEmpty()
+                .filter {
+                    it.downloadStatus == VideoTaskState.PAUSE ||
+                        it.downloadStatus == VideoTaskState.ERROR ||
+                        it.downloadStatus == VideoTaskState.ENOSPC
+                }
+                .forEach { info ->
+                    VideoMetadataManager.getVideoInfo(info.id)?.let { video ->
+                        saveProgressInfo(info.copy(downloadStatus = VideoTaskState.ENQUEUE))
+                        systemDownloadManager.resumeDownload(ctx, video)
+                    }
+                }
+            systemDownloadManager.checkQueue(ctx)
+        }
+    }
+
+    fun refreshDownloadQueue() {
+        viewModelScope.launch(Dispatchers.IO) {
+            systemDownloadManager.checkQueue(ContextUtils.getApplicationContext())
+        }
+    }
+
     fun downloadVideo(context: Context?, videoInfo: VideoInfo?) {
         viewModelScope.launch(singleThreadExecutor) {
             videoInfo?.let {
+                val newKey = downloadKey(it)
+                val duplicate = progressRepository.getProgressInfos().blockingFirst(emptyList())
+                    .asSequence()
+                    .mapNotNull { progress -> VideoMetadataManager.getVideoInfo(progress.id) }
+                    .any { existing -> downloadKey(existing) == newKey }
+                if (duplicate) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            ContextUtils.getApplicationContext(),
+                            R.string.download_already_exists,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    return@let
+                }
                 val progressInfo = ProgressInfo(
                     id = it.id,
                     downloadId = it.id.hashCode().toLong(),
@@ -126,6 +199,18 @@ class ProgressViewModel @Inject constructor(
                 val ctx = context ?: ContextUtils.getApplicationContext()
                 systemDownloadManager.startDownload(ctx, it)
             }
+        }
+    }
+
+    private fun downloadKey(videoInfo: VideoInfo): String {
+        val selectedUrl = videoInfo.formats.allFormats().firstOrNull()?.url
+            ?: videoInfo.downloadUrls.firstOrNull()?.url?.toString()
+            ?: videoInfo.originalUrl
+        val uri = runCatching { Uri.parse(selectedUrl) }.getOrNull()
+        return if (uri != null && !uri.scheme.isNullOrBlank()) {
+            uri.buildUpon().fragment(null).build().toString()
+        } else {
+            selectedUrl.substringBefore('#')
         }
     }
 

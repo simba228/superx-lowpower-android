@@ -509,8 +509,8 @@
                                 android:layout_marginTop="8dp"
                                 android:contentDescription="@string/regular_threads_count"
                                 android:stepSize="1.0"
-                                android:valueFrom="1.0"
-                                android:valueTo="16.0" />
+                                android:valueFrom="2.0"
+                                android:valueTo="6.0" />
                         </LinearLayout>
 
                         <com.google.android.material.divider.MaterialDivider

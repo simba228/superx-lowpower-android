@@ -13,6 +13,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.Recycler
 import com.google.android.material.slider.Slider
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.myAllVideoBrowser.R
 import com.myAllVideoBrowser.databinding.FragmentProgressBinding
 import com.myAllVideoBrowser.ui.component.adapter.ProgressAdapter
@@ -22,6 +23,7 @@ import com.myAllVideoBrowser.ui.main.home.MainActivity
 import com.myAllVideoBrowser.ui.main.home.MainViewModel
 import com.myAllVideoBrowser.ui.main.settings.SettingsViewModel
 import com.myAllVideoBrowser.util.AppLogger
+import com.myAllVideoBrowser.util.downloaders.generic_downloader.models.VideoTaskState
 import javax.inject.Inject
 
 class ProgressFragment : BaseFragment() {
@@ -54,7 +56,7 @@ class ProgressFragment : BaseFragment() {
         ) {
             val currentSize = settingsViewModel.queueSize.get()
             this@ProgressFragment.dataBinding.simsCountSlider.value =
-                currentSize.coerceIn(1, Runtime.getRuntime().availableProcessors()).toFloat()
+                currentSize.coerceIn(1, 15).toFloat()
         }
     }
 
@@ -75,16 +77,69 @@ class ProgressFragment : BaseFragment() {
             this.rvProgress.layoutManager = managerL
             this.rvProgress.adapter = progressAdapter
 
-            val coreCount = Runtime.getRuntime().availableProcessors()
-            this.simsCountSlider.valueTo = coreCount.toFloat()
+            this.simsCountSlider.valueTo = 15f
             this.simsCountSlider.value = settingsViewModel?.queueSize?.get()?.toFloat() ?: 1f
             this.simsCountSlider.addOnChangeListener(simsThreadsListener)
+            this.startAllDownloads.setOnClickListener { progressViewModel.resumeAllDownloads() }
+            this.pauseAllDownloads.setOnClickListener { progressViewModel.pauseAllDownloads() }
+            this.selectAllDownloads.setOnClickListener { showStatusSelectionDialog() }
+            this.deleteSelectedDownloads.setOnClickListener { confirmDeleteSelected() }
             val simsText =
                 getString(R.string.queue_downloads_size) + " ${settingsViewModel?.queueSize?.get()}"
             this.simDownloadsCount.text = simsText
         }
+        progressAdapter.onSelectionChanged = { count ->
+            dataBinding.deleteSelectedDownloads.isEnabled = count > 0
+            dataBinding.deleteSelectedDownloads.text = if (count > 0) {
+                getString(R.string.delete_selected_count, count)
+            } else {
+                getString(R.string.delete_selected)
+            }
+        }
 
         return dataBinding.root
+    }
+
+    private fun confirmDeleteSelected() {
+        val ids = progressAdapter.selectedDownloadIds()
+        if (ids.isEmpty()) return
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.delete_selected)
+            .setMessage(getString(R.string.delete_downloads_confirmation, ids.size))
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.delete) { _, _ ->
+                progressViewModel.cancelDownloads(ids, true)
+                progressAdapter.clearSelection()
+            }
+            .show()
+    }
+
+    private fun showStatusSelectionDialog() {
+        val labels = arrayOf(
+            getString(R.string.download_status_all),
+            getString(R.string.download_status_downloading),
+            getString(R.string.download_status_paused),
+            getString(R.string.download_status_waiting),
+            getString(R.string.download_status_failed)
+        )
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(R.string.select_by_status)
+            .setItems(labels) { _, index ->
+                val statuses = when (index) {
+                    1 -> setOf(
+                        VideoTaskState.PREPARE,
+                        VideoTaskState.START,
+                        VideoTaskState.DOWNLOADING,
+                        VideoTaskState.PROXYREADY
+                    )
+                    2 -> setOf(VideoTaskState.PAUSE)
+                    3 -> setOf(VideoTaskState.PENDING, VideoTaskState.ENQUEUE)
+                    4 -> setOf(VideoTaskState.ERROR, VideoTaskState.ENOSPC)
+                    else -> null
+                }
+                progressAdapter.selectByStatuses(statuses)
+            }
+            .show()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -103,6 +158,7 @@ class ProgressFragment : BaseFragment() {
         if (fromUser) {
             val downloadsCount = value.toInt()
             settingsViewModel.setSimulationsCount(downloadsCount)
+            progressViewModel.refreshDownloadQueue()
         }
     }
 

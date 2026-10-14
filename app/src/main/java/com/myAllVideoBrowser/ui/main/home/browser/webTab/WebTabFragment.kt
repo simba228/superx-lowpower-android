@@ -371,6 +371,14 @@ class WebTabFragment : BaseWebTabFragment() {
     }
 
     private fun onVideoPushed(videoInfo: VideoInfo) {
+        val floatingTitle = webTab.getWebView()?.title.orEmpty().trim()
+        if (floatingTitle.isNotBlank()) {
+            videoInfo.title = floatingTitle
+            val titles = videoDetectionTabViewModel.formatsTitles.get()?.toMutableMap()
+                ?: mutableMapOf()
+            titles[videoInfo.id] = floatingTitle
+            videoDetectionTabViewModel.formatsTitles.set(titles)
+        }
         showToastVideoFound()
 
         hasVerifiedFloatingResource = true

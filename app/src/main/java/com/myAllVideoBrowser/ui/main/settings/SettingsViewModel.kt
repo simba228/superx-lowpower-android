@@ -30,7 +30,7 @@ class SettingsViewModel @Inject constructor(
     BaseViewModel() {
     val isAskRedirection = ObservableBoolean(false)
     val regularThreadsCount = ObservableInt(1)
-    val m3u8ThreadsCount = ObservableInt(4)
+    val m3u8ThreadsCount = ObservableInt(2)
     val videoDetectionTreshold = ObservableInt(4 * 1024 * 1024)
     val storageType = ObservableField(StorageType.SD)
     val searchEngineName = ObservableField(SearchEngine.current.displayName)
@@ -52,7 +52,7 @@ class SettingsViewModel @Inject constructor(
     val isUseLegacyM3u8Detection = ObservableBoolean(false)
     val isAdBlockOn = ObservableBoolean(true)
     val isDownloadSubtitles = ObservableBoolean(false)
-    val queueSize = ObservableInt(1)
+    val queueSize = ObservableInt(2)
     private val isShowVideoActionButton = ObservableBoolean(true)
     private val isShowVideoAlert = ObservableBoolean(true)
     private val isCheckEveryRequestOnVideo = ObservableBoolean(true)
@@ -345,21 +345,17 @@ class SettingsViewModel @Inject constructor(
 
     private var simThreadsJob: Job? = null
     fun setSimulationsCount(count: Int) {
-        val coreCount = Runtime.getRuntime().availableProcessors()
-        val simDownloadsCount = count.coerceIn(1, coreCount)
+        val simDownloadsCount = count.coerceIn(1, 15)
 
         queueSize.set(simDownloadsCount)
 
-        simThreadsJob?.cancel()
-        simThreadsJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(10)
-            sharedPrefHelper.setMaxSimultaneousDownloads(simDownloadsCount)
-        }
+        // Persist immediately so the download queue sees the new limit when the slider changes.
+        sharedPrefHelper.setMaxSimultaneousDownloads(simDownloadsCount)
     }
 
     private var m3u8ThreadsJob: Job? = null
     fun setM3u8ThreadsCount(progress: Int) {
-        val finalCount = max(1, progress)
+        val finalCount = progress.coerceIn(2, 6)
         m3u8ThreadsCount.set(finalCount)
 
         m3u8ThreadsJob?.cancel()

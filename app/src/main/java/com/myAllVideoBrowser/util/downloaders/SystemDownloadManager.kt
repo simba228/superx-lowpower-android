@@ -55,6 +55,17 @@ class SystemDownloadManager @Inject constructor(
         checkQueue(context)
     }
 
+    @Synchronized
+    fun pauseAllDownloads(context: Context, videoInfos: List<VideoInfo>) {
+        // Do not refill the queue after pausing each item; otherwise a pending task can start
+        // between two pause operations and "Pause all" never reaches a stable paused state.
+        videoInfos.forEach { videoInfo ->
+            AppLogger.d("SystemDownloadManager: pauseAll ${videoInfo.id}")
+            getDownloader(videoInfo).pauseDownload(context, videoInfo)
+            removeFlagFiles(videoInfo.id)
+        }
+    }
+
     override fun resumeDownload(context: Context, videoInfo: VideoInfo) {
         AppLogger.d("SystemDownloadManager: resumeDownload ${videoInfo.id}")
         startDownload(context, videoInfo)
@@ -65,6 +76,17 @@ class SystemDownloadManager @Inject constructor(
         getDownloader(videoInfo).cancelDownload(context, videoInfo, removeFile)
         VideoMetadataManager.deleteVideoInfo(videoInfo.id)
         removeFlagFiles(videoInfo.id)
+        checkQueue(context)
+    }
+
+    @Synchronized
+    fun cancelDownloads(context: Context, videoInfos: List<VideoInfo>, removeFile: Boolean) {
+        videoInfos.forEach { videoInfo ->
+            AppLogger.d("SystemDownloadManager: cancel selected ${videoInfo.id}")
+            getDownloader(videoInfo).cancelDownload(context, videoInfo, removeFile)
+            VideoMetadataManager.deleteVideoInfo(videoInfo.id)
+            removeFlagFiles(videoInfo.id)
+        }
         checkQueue(context)
     }
 

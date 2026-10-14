@@ -75,13 +75,29 @@
             android:textStyle="bold" />
 
         <ImageButton
+            android:id="@+id/floating_settings"
+            android:layout_width="36dp"
+            android:layout_height="34dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginHorizontal="3dp"
+            android:background="@drawable/floating_top_icon_background"
+            android:contentDescription="@string/settings"
+            android:padding="7dp"
+            android:src="@drawable/floating_settings_dark"
+            app:tint="@null" />
+
+        <ImageButton
             android:id="@+id/floating_fullscreen"
-            android:layout_width="40dp"
-            android:layout_height="44dp"
-            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:layout_width="36dp"
+            android:layout_height="34dp"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="3dp"
+            android:layout_marginEnd="5dp"
+            android:background="@drawable/floating_top_icon_background"
             android:contentDescription="@string/floating_video_fullscreen"
-            android:src="@drawable/floating_video_24px"
-            app:tint="@android:color/white" />
+            android:padding="7dp"
+            android:src="@drawable/floating_fullscreen_dark"
+            app:tint="@null" />
     </LinearLayout>
 
 </com.myAllVideoBrowser.ui.main.player.ResizableOverlayLayout>

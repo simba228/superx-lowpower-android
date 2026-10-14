@@ -203,12 +203,12 @@ class SharedPrefHelper @Inject constructor(
     }
 
     fun getM3u8DownloaderThreadCount(): Int {
-        return maxOf(1, sharedPreferences.getInt(M3U8_THREAD_COUNT, 3)) // means 4
+        return sharedPreferences.getInt(M3U8_THREAD_COUNT, 2).coerceIn(2, 6)
     }
 
     fun setM3u8DownloaderThreadCount(count: Int) {
         sharedPreferences.edit {
-            putInt(M3U8_THREAD_COUNT, count)
+            putInt(M3U8_THREAD_COUNT, count.coerceIn(2, 6))
         }
     }
 
@@ -430,15 +430,14 @@ class SharedPrefHelper @Inject constructor(
     }
 
     fun getMaxSimultaneousDownloads(): Int {
-        return sharedPreferences.getInt(
-            MAX_SIMULTANEOUS_DOWNLOADS,
-            Runtime.getRuntime().availableProcessors()
-        )
+        // Every HLS task has its own segment concurrency. Keeping the outer queue bounded
+        // prevents an 8-core phone from accidentally creating 20+ simultaneous requests.
+        return sharedPreferences.getInt(MAX_SIMULTANEOUS_DOWNLOADS, 2).coerceIn(1, 15)
     }
 
     fun setMaxSimultaneousDownloads(count: Int) {
         sharedPreferences.edit {
-            putInt(MAX_SIMULTANEOUS_DOWNLOADS, count)
+            putInt(MAX_SIMULTANEOUS_DOWNLOADS, count.coerceIn(1, 15))
         }
     }
 
