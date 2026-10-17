@@ -13,4 +13,6 @@ public class VideoTaskState {
     public static final int ENOSPC = 8;        //空间不足
     public static final int CANCELED = 9;        //空间不足
     public static final int ENQUEUE = 10;
+    public static final int RETRY_PENDING = 11; //失败后冷却，等待自动重试
+    public static final int NEEDS_ACTION = 12;  //需要用户重新解析或处理错误
 }

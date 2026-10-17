@@ -133,8 +133,16 @@ class ProgressFragment : BaseFragment() {
                         VideoTaskState.PROXYREADY
                     )
                     2 -> setOf(VideoTaskState.PAUSE)
-                    3 -> setOf(VideoTaskState.PENDING, VideoTaskState.ENQUEUE)
-                    4 -> setOf(VideoTaskState.ERROR, VideoTaskState.ENOSPC)
+                    3 -> setOf(
+                        VideoTaskState.PENDING,
+                        VideoTaskState.ENQUEUE,
+                        VideoTaskState.RETRY_PENDING
+                    )
+                    4 -> setOf(
+                        VideoTaskState.ERROR,
+                        VideoTaskState.ENOSPC,
+                        VideoTaskState.NEEDS_ACTION
+                    )
                     else -> null
                 }
                 progressAdapter.selectByStatuses(statuses)

@@ -146,7 +146,9 @@ class ProgressViewModel @Inject constructor(
                 .filter {
                     it.downloadStatus == VideoTaskState.PAUSE ||
                         it.downloadStatus == VideoTaskState.ERROR ||
-                        it.downloadStatus == VideoTaskState.ENOSPC
+                        it.downloadStatus == VideoTaskState.ENOSPC ||
+                        it.downloadStatus == VideoTaskState.NEEDS_ACTION ||
+                        it.downloadStatus == VideoTaskState.RETRY_PENDING
                 }
                 .forEach { info ->
                     VideoMetadataManager.getVideoInfo(info.id)?.let { video ->

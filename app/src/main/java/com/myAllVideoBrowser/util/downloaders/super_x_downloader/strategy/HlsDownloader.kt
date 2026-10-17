@@ -32,6 +32,11 @@ class HlsDownloader(
     private val isAudioOnlyExtract: Boolean = false
 ) : ManifestDownloader {
 
+    companion object {
+        private const val NO_PROGRESS_TIMEOUT_MS = 60_000L
+        private const val WATCHDOG_INTERVAL_MS = 5_000L
+    }
+
     override suspend fun download(
         task: VideoTaskItem,
         headers: Map<String, String>,
@@ -42,6 +47,7 @@ class HlsDownloader(
         return withContext(Dispatchers.IO) {
             val hlsTotalBytesDownloaded = AtomicLong(0L)
             val hlsSegmentsCompleted = AtomicInteger(0)
+            val lastProgressAt = AtomicLong(System.currentTimeMillis())
             val startTime = System.currentTimeMillis()
 
             // 1. Get the list of media segments by calling the provided function
@@ -151,6 +157,7 @@ class HlsDownloader(
                     val avgSegmentSize = initialTotalDownloaded / initialSegmentsCompleted
                     val estimatedOverallTotal = avgSegmentSize * totalSegmentsToDownload
                     onProgress(Progress(initialTotalDownloaded, estimatedOverallTotal, info))
+                    lastProgressAt.set(System.currentTimeMillis())
                 }
             }
 
@@ -171,6 +178,7 @@ class HlsDownloader(
                                 segmentDownloader.download(segment.url, outputFile, "HLS", i)
                             val completed = hlsSegmentsCompleted.incrementAndGet()
                             val totalDownloaded = hlsTotalBytesDownloaded.addAndGet(downloadedBytes)
+                            lastProgressAt.set(System.currentTimeMillis())
 
                             val avgSegmentSize =
                                 if (completed > 0) totalDownloaded / completed else 0
@@ -201,6 +209,7 @@ class HlsDownloader(
                                 segmentDownloader.download(segment.url, outputFile, "HLS-Audio", i)
                             val completed = hlsSegmentsCompleted.incrementAndGet()
                             val totalDownloaded = hlsTotalBytesDownloaded.addAndGet(downloadedBytes)
+                            lastProgressAt.set(System.currentTimeMillis())
 
                             val avgSegmentSize =
                                 if (completed > 0) totalDownloaded / completed else 0
@@ -222,7 +231,15 @@ class HlsDownloader(
                 }
             }
 
-            // Wait for all segment downloads to complete
+            // Wait for all segment downloads while watching actual completed-segment progress.
+            // This catches calls which remain alive but stop producing data indefinitely.
+            while (downloadJobs.any { !it.isCompleted }) {
+                delay(WATCHDOG_INTERVAL_MS)
+                if (System.currentTimeMillis() - lastProgressAt.get() >= NO_PROGRESS_TIMEOUT_MS) {
+                    downloadJobs.forEach { it.cancel() }
+                    throw IOException("No download progress for 60 seconds")
+                }
+            }
             downloadJobs.joinAll()
 
             // After all jobs are done, a final check for interruption is crucial.

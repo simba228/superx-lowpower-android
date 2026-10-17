@@ -62,6 +62,8 @@ data class ProgressInfo(
             VideoTaskState.ENOSPC -> "failed"
             VideoTaskState.ERROR -> "failed"
             VideoTaskState.ENQUEUE -> "enqueued"
+            VideoTaskState.RETRY_PENDING -> "retry waiting"
+            VideoTaskState.NEEDS_ACTION -> "needs action"
             else -> "undefined"
         }
 

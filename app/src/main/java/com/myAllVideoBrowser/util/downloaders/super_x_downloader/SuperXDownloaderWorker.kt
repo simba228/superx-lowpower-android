@@ -983,6 +983,9 @@ class SuperXDownloaderWorker(appContext: Context, workerParams: WorkerParameters
         infoLine: String = "",
         isLive: Boolean = false,
     ) {
+        if (downloadStatus == VideoTaskState.DOWNLOADING || downloadStatus == VideoTaskState.PREPARE) {
+            systemDownloadManager.onTaskProgress(taskId)
+        }
         if (getDone() && downloadStatus == VideoTaskState.DOWNLOADING) {
             return
         }

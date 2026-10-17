@@ -59,14 +59,21 @@ abstract class GenericDownloadWorkerWrapper(
     private var lastForegroundUpdateTime = 0L
 
     override suspend fun onTaskFinished(taskId: String) {
-        val progressInfo = progressRepository.getProgressInfos().blockingFirst()
-            .firstOrNull { it.id == taskId }
-        AppLogger.d("onTaskFinished ${inputData.getString(GenericDownloader.Constants.TASK_ID_KEY)} \n---: $progressInfo")
-        if (progressInfo != null && (progressInfo.downloadStatus == VideoTaskState.SUCCESS || progressInfo.downloadStatus == VideoTaskState.ERROR)) {
-            systemDownloadManager.onTaskFinished(
-                taskId,
-                progressInfo.downloadStatus == VideoTaskState.SUCCESS
-            )
+        try {
+            val progressInfo = progressRepository.getProgressInfos().blockingFirst()
+                .firstOrNull { it.id == taskId }
+            AppLogger.d("onTaskFinished ${inputData.getString(GenericDownloader.Constants.TASK_ID_KEY)} \n---: $progressInfo")
+            if (progressInfo != null && (progressInfo.downloadStatus == VideoTaskState.SUCCESS || progressInfo.downloadStatus == VideoTaskState.ERROR)) {
+                systemDownloadManager.onTaskFinished(
+                    taskId,
+                    progressInfo.downloadStatus == VideoTaskState.SUCCESS,
+                    progressInfo.infoLine
+                )
+            }
+        } finally {
+            // WorkManager changes RUNNING to a terminal state just after this callback returns.
+            // Recheck shortly afterwards so a terminal DB update race cannot leave a slot held.
+            systemDownloadManager.requestQueueReconciliation()
         }
     }
 

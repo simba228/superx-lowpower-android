@@ -14,6 +14,7 @@ import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.TextView
 import android.widget.Toast
@@ -158,7 +159,7 @@ class FloatingVideoService : Service() {
         player = exoPlayer
         val playerView = view.findViewById<PlayerView>(R.id.floating_player_view)
         playerView.player = exoPlayer
-        configureSeekGestures(playerView, exoPlayer)
+        configurePlayerGestures(playerView, exoPlayer, layoutParams)
         val mediaItem = MediaItem.Builder().setUri(uri).apply {
             if (!videoMime.isNullOrBlank()) setMimeType(videoMime)
             else if (videoUrl.contains("m3u8", ignoreCase = true)) setMimeType(MimeTypes.APPLICATION_M3U8)
@@ -201,12 +202,29 @@ class FloatingVideoService : Service() {
         }
     }
 
-    private fun configureSeekGestures(playerView: PlayerView, exoPlayer: ExoPlayer) {
+    private fun configurePlayerGestures(
+        playerView: PlayerView,
+        exoPlayer: ExoPlayer,
+        layoutParams: WindowManager.LayoutParams
+    ) {
         val minDistance = 64 * resources.displayMetrics.density
+        var startWindowX = 0
+        var startWindowY = 0
+        var startTouchX = 0f
+        var startTouchY = 0f
+        var dragging = false
+        var horizontalSeek = false
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
         val detector = GestureDetector(
             this,
             object : GestureDetector.SimpleOnGestureListener() {
-                override fun onDown(event: MotionEvent): Boolean = false
+                override fun onDown(event: MotionEvent): Boolean = true
+
+                override fun onSingleTapUp(event: MotionEvent): Boolean {
+                    if (playerView.isControllerFullyVisible) playerView.hideController()
+                    else playerView.showController()
+                    return true
+                }
 
                 override fun onFling(
                     down: MotionEvent?,
@@ -214,6 +232,7 @@ class FloatingVideoService : Service() {
                     velocityX: Float,
                     velocityY: Float
                 ): Boolean {
+                    if (dragging) return true
                     val start = down ?: return false
                     val distanceX = up.x - start.x
                     val distanceY = up.y - start.y
@@ -241,7 +260,46 @@ class FloatingVideoService : Service() {
                 }
             }
         )
-        playerView.setOnTouchListener { _, event -> detector.onTouchEvent(event) }
+        detector.setIsLongpressEnabled(false)
+        playerView.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                startWindowX = layoutParams.x
+                startWindowY = layoutParams.y
+                startTouchX = event.rawX
+                startTouchY = event.rawY
+                dragging = false
+                horizontalSeek = false
+            } else if (event.actionMasked == MotionEvent.ACTION_MOVE &&
+                !dragging && !horizontalSeek
+            ) {
+                val distanceX = event.rawX - startTouchX
+                val distanceY = event.rawY - startTouchY
+                if (kotlin.math.hypot(distanceX, distanceY) >= touchSlop) {
+                    // Keep the existing horizontal seek gesture. Every other direction starts
+                    // moving the floating window immediately, without a long-press delay.
+                    horizontalSeek = kotlin.math.abs(distanceX) > kotlin.math.abs(distanceY) * 1.25f
+                    dragging = !horizontalSeek
+                }
+            }
+
+            val gestureHandled = detector.onTouchEvent(event)
+            if (event.actionMasked == MotionEvent.ACTION_MOVE && dragging) {
+                layoutParams.x = startWindowX + (event.rawX - startTouchX).roundToInt()
+                layoutParams.y = startWindowY + (event.rawY - startTouchY).roundToInt()
+                overlay?.let { windowManager.updateViewLayout(it, layoutParams) }
+                true
+            } else if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL
+            ) {
+                val wasDragging = dragging
+                if (wasDragging) saveBounds(layoutParams)
+                dragging = false
+                horizontalSeek = false
+                wasDragging || gestureHandled
+            } else {
+                dragging || gestureHandled
+            }
+        }
     }
 
     private fun configureDrag(handle: View, layoutParams: WindowManager.LayoutParams) {
@@ -249,6 +307,8 @@ class FloatingVideoService : Service() {
         var startY = 0
         var touchX = 0f
         var touchY = 0f
+        var dragging = false
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
         handle.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -256,17 +316,35 @@ class FloatingVideoService : Service() {
                     startY = layoutParams.y
                     touchX = event.rawX
                     touchY = event.rawY
+                    dragging = false
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    layoutParams.x = startX + (event.rawX - touchX).roundToInt()
-                    layoutParams.y = startY + (event.rawY - touchY).roundToInt()
-                    overlay?.let { windowManager.updateViewLayout(it, layoutParams) }
+                    if (!dragging && kotlin.math.hypot(
+                            event.rawX - touchX,
+                            event.rawY - touchY
+                        ) >= touchSlop
+                    ) {
+                        dragging = true
+                    }
+                    if (dragging) {
+                        layoutParams.x = startX + (event.rawX - touchX).roundToInt()
+                        layoutParams.y = startY + (event.rawY - touchY).roundToInt()
+                        overlay?.let { windowManager.updateViewLayout(it, layoutParams) }
+                    }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    saveBounds(layoutParams)
-                    handle.performClick()
+                    if (dragging) {
+                        saveBounds(layoutParams)
+                    } else {
+                        handle.performClick()
+                    }
+                    dragging = false
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
                     true
                 }
                 else -> false
