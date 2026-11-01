@@ -8,7 +8,8 @@ import okhttp3.Request
 data class DetectedVideoResource(
     val request: Request,
     val isM3u8: Boolean = false,
-    val isMpd: Boolean = false
+    val isMpd: Boolean = false,
+    val source: MediaDetectionSource = MediaDetectionSource.NETWORK
 )
 
 interface IVideoDetector {

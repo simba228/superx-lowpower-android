@@ -26,6 +26,7 @@ import com.myAllVideoBrowser.ui.component.adapter.MainAdapter
 import com.myAllVideoBrowser.ui.main.base.BaseActivity
 import com.myAllVideoBrowser.ui.main.progress.ProgressViewModel
 import com.myAllVideoBrowser.ui.main.player.FloatingVideoService
+import com.myAllVideoBrowser.ui.main.player.FloatingVideoFormatSelector
 import com.myAllVideoBrowser.ui.main.player.VideoPlayerFragment
 import com.myAllVideoBrowser.data.local.room.entity.VideFormatEntityList
 import com.myAllVideoBrowser.data.local.room.entity.VideoFormatEntity
@@ -235,6 +236,27 @@ class MainActivity : BaseActivity() {
         val mime = intent.getStringExtra(VideoPlayerFragment.VIDEO_MIME)
         val isHls = mime == androidx.media3.common.MimeTypes.APPLICATION_M3U8 ||
             url.contains("m3u8", ignoreCase = true)
+
+        val verifiedInfo = FloatingVideoService.getVerifiedDownloadInfo()
+        val verifiedFormat = verifiedInfo?.let(FloatingVideoFormatSelector::select)
+        if (verifiedInfo != null && verifiedFormat?.url == url) {
+            val verifiedHeaders = verifiedFormat.httpHeaders.orEmpty()
+            val verifiedRequest = runCatching {
+                Request.Builder().url(url).headers(verifiedHeaders.toHeaders()).build()
+            }.getOrNull()
+            progressViewModel.downloadVideo(
+                this,
+                verifiedInfo.copy(
+                    id = UUID.randomUUID().toString(),
+                    title = title,
+                    downloadUrls = verifiedRequest?.let(::listOf) ?: verifiedInfo.downloadUrls,
+                    formats = VideFormatEntityList(listOf(verifiedFormat))
+                )
+            )
+            Toast.makeText(this, R.string.floating_download_started, Toast.LENGTH_SHORT).show()
+            return true
+        }
+
         val format = VideoFormatEntity(
             format = if (isHls) "hls" else "http",
             formatId = if (isHls) "hls-auto" else "http-auto",
@@ -258,7 +280,6 @@ class MainActivity : BaseActivity() {
                 isDetectedBySuperX = true
             )
         )
-        dataBinding.viewPager.currentItem = 1
         Toast.makeText(this, R.string.floating_download_started, Toast.LENGTH_SHORT).show()
         return true
     }

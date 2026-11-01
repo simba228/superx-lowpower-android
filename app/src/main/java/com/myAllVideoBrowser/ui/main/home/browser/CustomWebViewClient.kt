@@ -245,8 +245,22 @@ class CustomWebViewClient(
                 }
             }
 
-            val contentType =
-                VideoUtils.getContentTypeByUrl(url, requestWithCookies?.headers, okHttpProxyClient)
+            // Known media suffixes are already authoritative. Avoid a synchronous network
+            // content-type probe for them: it delays both the popup and the download button,
+            // and on some CDNs the extra HEAD/range request is much slower than WebView itself.
+            val normalizedUrl = url.substringBefore('?').substringBefore('#').lowercase()
+            val contentType = when {
+                normalizedUrl.endsWith(".m3u8") -> ContentType.M3U8
+                normalizedUrl.endsWith(".mpd") -> ContentType.MPD
+                normalizedUrl.endsWith(".mp4") || normalizedUrl.endsWith(".m4v") ||
+                    normalizedUrl.endsWith(".webm") || normalizedUrl.endsWith(".mov") ->
+                    ContentType.VIDEO
+                else -> VideoUtils.getContentTypeByUrl(
+                    url,
+                    requestWithCookies?.headers,
+                    okHttpProxyClient
+                )
+            }
             val isInterruptIntreceptedResources =
                 settingsModel.isInterruptIntreceptedResources.get()
             when {

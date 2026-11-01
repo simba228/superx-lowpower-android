@@ -69,6 +69,8 @@ abstract class GenericDownloadWorkerWrapper(
                     progressInfo.downloadStatus == VideoTaskState.SUCCESS,
                     progressInfo.infoLine
                 )
+            } else if (progressInfo == null) {
+                systemDownloadManager.onTaskRecordMissing(taskId)
             }
         } finally {
             // WorkManager changes RUNNING to a terminal state just after this callback returns.

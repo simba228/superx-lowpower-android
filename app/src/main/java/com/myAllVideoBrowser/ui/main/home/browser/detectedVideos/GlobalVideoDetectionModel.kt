@@ -15,7 +15,6 @@ import com.myAllVideoBrowser.util.scheduler.BaseSchedulers
 import io.reactivex.rxjava3.disposables.Disposable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.Request
 import javax.inject.Inject
@@ -213,11 +212,10 @@ class GlobalVideoDetectionModel @Inject constructor(
             return
         }
 
-        // Cancel previous pending UI update to avoid flickering
+        // Publish immediately. Detection has already completed; an extra UI debounce makes the
+        // popup noticeably slower and can lose to the next intercepted media candidate.
         pushJob?.cancel()
         pushJob = viewModelScope.launch(Dispatchers.Main) {
-            downloadButtonState.set(DownloadButtonStateLoading())
-            delay(400)
             downloadButtonState.set(DownloadButtonStateCanDownload(newInfo))
         }
     }

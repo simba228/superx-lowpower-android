@@ -2,6 +2,8 @@ package com.myAllVideoBrowser.util
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.os.PowerManager
 import com.google.gson.Gson
 import com.myAllVideoBrowser.data.local.GeneratedProxyCreds
 import com.myAllVideoBrowser.data.local.model.Proxy
@@ -23,6 +25,7 @@ class SharedPrefHelper @Inject constructor(
         private const val IS_FIRST_START = "IS_FIRST_START"
         private const val IS_SHOW_VIDEO_ALERT = "IS_SHOW_VIDEO_ALERT"
         private const val IS_SHOW_VIDEO_ACTION_BUTTON = "IS_SHOW_VIDEO_ACTION_BUTTON"
+        private const val IS_AUTO_OPEN_FLOATING_VIDEO = "IS_AUTO_OPEN_FLOATING_VIDEO"
         private const val IS_EXTERNAL_USE = "IS_EXTERNAL_USE"
         private const val IS_APP_DIR_USE = "IS_APP_DIR_USE"
         private const val IS_DARK_MODE = "IS_DARK_MODE"
@@ -55,6 +58,8 @@ class SharedPrefHelper @Inject constructor(
         private const val IS_ADBLOCK_ON = "IS_ADBLOCK_ON"
         private const val IS_DOWNLOAD_SUBTITLES = "IS_DOWNLOAD_SUBTITLES"
         private const val SEARCH_ENGINE = "SEARCH_ENGINE"
+        private const val SITE_FLOATING_VIDEO_PREFIX = "SITE_FLOATING_VIDEO_"
+        private const val IS_SMART_DOWNLOAD_SCHEDULING = "IS_SMART_DOWNLOAD_SCHEDULING"
     }
 
     fun getSearchEngineId(): String = sharedPreferences.getString(
@@ -141,6 +146,31 @@ class SharedPrefHelper @Inject constructor(
         }
     }
 
+    fun isAutoOpenFloatingVideo(): Boolean {
+        return sharedPreferences.getBoolean(IS_AUTO_OPEN_FLOATING_VIDEO, false)
+    }
+
+    fun setAutoOpenFloatingVideo(isEnabled: Boolean) {
+        sharedPreferences.edit {
+            putBoolean(IS_AUTO_OPEN_FLOATING_VIDEO, isEnabled)
+        }
+    }
+
+    fun getSiteFloatingVideoMode(host: String): Int? {
+        if (host.isBlank()) return null
+        val key = SITE_FLOATING_VIDEO_PREFIX + host.lowercase()
+        return if (sharedPreferences.contains(key)) sharedPreferences.getInt(key, 0) else null
+    }
+
+    /** mode: -1 never auto-open, 1 always auto-open, null follows the global setting. */
+    fun setSiteFloatingVideoMode(host: String, mode: Int?) {
+        if (host.isBlank()) return
+        val key = SITE_FLOATING_VIDEO_PREFIX + host.lowercase()
+        sharedPreferences.edit {
+            if (mode == null) remove(key) else putInt(key, mode.coerceIn(-1, 1))
+        }
+    }
+
     fun getIsExternalUse(): Boolean {
         val defIsExternal = FileUtil.isExternalStorageWritable()
 
@@ -210,6 +240,31 @@ class SharedPrefHelper @Inject constructor(
         sharedPreferences.edit {
             putInt(M3U8_THREAD_COUNT, count.coerceIn(2, 6))
         }
+    }
+
+    fun isSmartDownloadScheduling(): Boolean =
+        sharedPreferences.getBoolean(IS_SMART_DOWNLOAD_SCHEDULING, false)
+
+    fun setSmartDownloadScheduling(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(IS_SMART_DOWNLOAD_SCHEDULING, enabled) }
+    }
+
+    fun getEffectiveRegularDownloaderThreadCount(): Int {
+        val configured = getRegularDownloaderThreadCount()
+        if (!isSmartDownloadScheduling()) return configured
+        val powerSave = context.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+        val metered = context.getSystemService(ConnectivityManager::class.java)
+            ?.isActiveNetworkMetered != false
+        return configured.coerceAtMost(if (powerSave) 1 else if (metered) 2 else 4)
+    }
+
+    fun getEffectiveM3u8DownloaderThreadCount(): Int {
+        val configured = getM3u8DownloaderThreadCount()
+        if (!isSmartDownloadScheduling()) return configured
+        val powerSave = context.getSystemService(PowerManager::class.java)?.isPowerSaveMode == true
+        val metered = context.getSystemService(ConnectivityManager::class.java)
+            ?.isActiveNetworkMetered != false
+        return configured.coerceAtMost(if (powerSave) 2 else if (metered) 3 else 6)
     }
 
     fun getVideoDetectionTreshold(): Int {

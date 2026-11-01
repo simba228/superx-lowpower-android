@@ -135,6 +135,8 @@ abstract class BaseWebTabFragment : BaseFragment() {
 
     abstract fun bookmarkCurrentUrl()
 
+    open fun currentWebUrl(): String? = null
+
     fun buildWebTabMenu(browserMenu: View, isHomeTab: Boolean) {
         if (popupMenu == null) {
             popupMenu = buildPopupMenu(browserMenu)
@@ -143,6 +145,7 @@ abstract class BaseWebTabFragment : BaseFragment() {
 
             menu.findItem(R.id.bookmark).isVisible = !isHomeTab
             menu.findItem(R.id.share_link).isVisible = !isHomeTab
+            menu.findItem(R.id.site_video_rules).isVisible = !isHomeTab
 
             menu.findItem(R.id.adblock_toggle).isChecked =
                 mainActivity.settingsViewModel.isAdBlockOn.get()
@@ -227,6 +230,11 @@ abstract class BaseWebTabFragment : BaseFragment() {
                     true
                 }
 
+                R.id.site_video_rules -> {
+                    showSiteVideoRulesDialog()
+                    true
+                }
+
                 R.id.desktop_mode -> {
                     menuItem.isChecked = !menuItem.isChecked
                     setIsDesktop(menuItem.isChecked)
@@ -263,6 +271,36 @@ abstract class BaseWebTabFragment : BaseFragment() {
         }
 
         return popupMenu
+    }
+
+    private fun showSiteVideoRulesDialog() {
+        val host = currentWebUrl()?.toUri()?.host.orEmpty()
+        if (host.isBlank()) return
+        val values = arrayOf(
+            getString(R.string.site_video_follow_global),
+            getString(R.string.site_video_never_auto_open),
+            getString(R.string.site_video_always_auto_open)
+        )
+        val selected = when (sharedPrefHelper.getSiteFloatingVideoMode(host)) {
+            -1 -> 1
+            1 -> 2
+            else -> 0
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle(getString(R.string.site_video_rules_for, host))
+            .setSingleChoiceItems(values, selected) { dialog, which ->
+                sharedPrefHelper.setSiteFloatingVideoMode(
+                    host,
+                    when (which) {
+                        1 -> -1
+                        2 -> 1
+                        else -> null
+                    }
+                )
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.all_text_cancel, null)
+            .show()
     }
 
     private fun showAboutDialog() {

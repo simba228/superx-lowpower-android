@@ -42,6 +42,13 @@
         android:visible="true"
         app:showAsAction="ifRoom|collapseActionView" />
 
+    <item
+        android:id="@+id/site_video_rules"
+        android:icon="@drawable/play_circle_24px"
+        android:title="@string/site_video_rules"
+        android:visible="false"
+        app:showAsAction="ifRoom|collapseActionView" />
+
 
     <item
         android:id="@+id/desktop_mode"

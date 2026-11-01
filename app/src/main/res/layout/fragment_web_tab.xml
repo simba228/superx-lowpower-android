@@ -244,6 +244,27 @@
                     app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Rounded" />
             </com.myAllVideoBrowser.ui.component.widget.MovableContainer>
 
+            <com.myAllVideoBrowser.ui.component.widget.MovableContainer
+                android:id="@+id/floating_play_container"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_marginEnd="96dp"
+                android:layout_marginBottom="16dp"
+                android:background="@drawable/rounded_bg"
+                android:outlineProvider="background"
+                android:visibility="gone">
+
+                <com.google.android.material.floatingactionbutton.FloatingActionButton
+                    android:id="@+id/floating_play_fab"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="24dp"
+                    android:contentDescription="@string/open_floating_video"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Rounded"
+                    app:srcCompat="@drawable/play_circle_24px" />
+            </com.myAllVideoBrowser.ui.component.widget.MovableContainer>
+
         </androidx.coordinatorlayout.widget.CoordinatorLayout>
     </FrameLayout>
 

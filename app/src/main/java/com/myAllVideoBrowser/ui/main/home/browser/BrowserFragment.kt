@@ -259,6 +259,16 @@ class BrowserFragment : BaseFragment(), BrowserServicesProvider {
             AppLogger.d("ServiceWorker floating video ignored by ad blocker")
             return
         }
+        // Verification still continues after this helper returns, so the current tab can
+        // expose its manual play button from the verified result without opening a popup.
+        val sourceHost = runCatching { android.net.Uri.parse(sourceUrl).host.orEmpty() }
+            .getOrDefault("")
+        val autoOpen = when (sharedPrefHelper.getSiteFloatingVideoMode(sourceHost)) {
+            -1 -> false
+            1 -> true
+            else -> settingsModel.isAutoOpenFloatingVideo.get()
+        }
+        if (!autoOpen) return
         if (url == lastWorkerFloatingUrl || !Settings.canDrawOverlays(requireContext())) return
         lastWorkerFloatingUrl = url
         val headers = JSONObject(request.headers.toMap()).toString()

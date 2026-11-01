@@ -5,6 +5,7 @@ import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.myAllVideoBrowser.data.local.VideoMetadataManager
 import com.myAllVideoBrowser.data.local.room.entity.VideoInfo
@@ -38,7 +39,8 @@ class SystemDownloadManager @Inject constructor(
         private const val MAX_AUTOMATIC_REQUEUE_ROUNDS = 3
         private const val MIN_QUEUE_CHECK_DELAY_MS = 500L
         private const val ACTIVE_QUEUE_CHECK_INTERVAL_MS = 15_000L
-        private const val ACTIVE_NO_PROGRESS_TIMEOUT_MS = 75_000L
+        private const val WORK_START_TIMEOUT_MS = 30_000L
+        private const val ACTIVE_NO_PROGRESS_TIMEOUT_MS = 60_000L
         private const val IMMEDIATE_QUEUE_WORK_NAME = "SYSTEM_DOWNLOAD_QUEUE_CHECK"
         private const val WATCHDOG_QUEUE_WORK_NAME = "SYSTEM_DOWNLOAD_QUEUE_WATCHDOG"
     }
@@ -129,8 +131,13 @@ class SystemDownloadManager @Inject constructor(
 
         val downloadingFlagFiles =
             tmpDir.listFiles { _, name -> name.endsWith(DOWNLOADING_EXT) } ?: emptyArray()
-        val downloadingFiles = reconcileDownloadingFlags(context, downloadingFlagFiles)
         val maxSimultaneous = sharedPrefHelper.getMaxSimultaneousDownloads()
+        val reconciledFiles = reconcileDownloadingFlags(context, downloadingFlagFiles)
+        val downloadingFiles = enforceConcurrencyLimit(
+            context,
+            reconciledFiles,
+            maxSimultaneous
+        )
         var nextQueueCheckDelayMs: Long? = null
 
         AppLogger.d("SystemDownloadManager: checkQueue. Active: ${downloadingFiles.size}, Max: $maxSimultaneous")
@@ -144,7 +151,22 @@ class SystemDownloadManager @Inject constructor(
             val allPendingFiles =
                 tmpDir.listFiles { _, name -> name.endsWith(PENDING_EXT) } ?: emptyArray()
             val now = System.currentTimeMillis()
+            val visibleTaskIds = getVisibleTaskIdsOrNull()
+            if (visibleTaskIds != null) {
+                allPendingFiles
+                    .filter { it.name.removeSuffix(PENDING_EXT) !in visibleTaskIds }
+                    .forEach { pendingFile ->
+                        val taskId = pendingFile.name.removeSuffix(PENDING_EXT)
+                        pendingFile.delete()
+                        VideoMetadataManager.deleteVideoInfo(taskId)
+                        clearRetryCount(taskId)
+                        AppLogger.w(
+                            "SystemDownloadManager: removed invisible pending task $taskId before start"
+                        )
+                    }
+            }
             val pendingFiles = allPendingFiles
+                .filter { it.exists() }
                 .filter { it.lastModified() <= now }
                 .sortedBy { it.lastModified() }
 
@@ -202,28 +224,55 @@ class SystemDownloadManager @Inject constructor(
         if (downloadingFiles.isEmpty()) return emptyList()
 
         val workManager = WorkManager.getInstance(context)
+        val visibleTaskIds = getVisibleTaskIdsOrNull()
         return downloadingFiles.filter { downloadingFile ->
             val taskId = downloadingFile.name.removeSuffix(DOWNLOADING_EXT)
-            val hasActiveWork = try {
+            if (visibleTaskIds != null && taskId !in visibleTaskIds) {
+                // The user-facing task was deleted, but an older worker/marker can survive a
+                // cancellation race. It must never remain invisible while consuming a slot.
+                workManager.cancelUniqueWork(taskId)
+                downloadingFile.delete()
+                VideoMetadataManager.deleteVideoInfo(taskId)
+                clearRetryCount(taskId)
+                AppLogger.w(
+                    "SystemDownloadManager: removed invisible active task $taskId and released its slot"
+                )
+                return@filter false
+            }
+            val activeStates = try {
                 workManager.getWorkInfosForUniqueWork(taskId)
                     .get(2, TimeUnit.SECONDS)
-                    .any { !it.state.isFinished }
+                    .map { it.state }
+                    .filter { !it.isFinished }
             } catch (error: Throwable) {
                 // A temporary WorkManager query failure must not start a duplicate download.
                 AppLogger.w(
                     "SystemDownloadManager: unable to verify active task $taskId; " +
                         "keeping its slot: ${error.message}"
                 )
-                true
+                return@filter true
             }
 
             val noProgressForMs = System.currentTimeMillis() - downloadingFile.lastModified()
-            val isStalled = hasActiveWork && noProgressForMs >= ACTIVE_NO_PROGRESS_TIMEOUT_MS
+            val isRunning = activeStates.any { it == WorkInfo.State.RUNNING }
+            val isWaitingToStart = activeStates.any {
+                it == WorkInfo.State.ENQUEUED || it == WorkInfo.State.BLOCKED
+            }
+            val startTimedOut = !isRunning && isWaitingToStart &&
+                noProgressForMs >= WORK_START_TIMEOUT_MS
+            val progressTimedOut = isRunning &&
+                noProgressForMs >= ACTIVE_NO_PROGRESS_TIMEOUT_MS
+            val isStalled = startTimedOut || progressTimedOut
 
             if (isStalled) {
+                val reason = if (startTimedOut) {
+                    "等待系统启动超过 ${WORK_START_TIMEOUT_MS / 1000} 秒"
+                } else {
+                    "连续 ${ACTIVE_NO_PROGRESS_TIMEOUT_MS / 1000} 秒无下载进度"
+                }
                 AppLogger.w(
-                    "SystemDownloadManager: task $taskId made no progress for " +
-                        "${noProgressForMs / 1000}s; moving it to queue tail"
+                    "SystemDownloadManager: task $taskId stalled ($reason, " +
+                        "states=$activeStates); moving it to queue tail"
                 )
                 workManager.cancelUniqueWork(taskId)
                 val pendingFile = File(fileUtil.tmpDir, taskId + PENDING_EXT)
@@ -236,12 +285,12 @@ class SystemDownloadManager @Inject constructor(
                 updateTaskStatus(
                     taskId,
                     VideoTaskState.RETRY_PENDING,
-                    "长时间无下载进度，已移至队尾"
+                    "$reason，已移至队尾"
                 )
                 return@filter false
             }
 
-            if (hasActiveWork) {
+            if (isRunning || isWaitingToStart) {
                 true
             } else {
                 val videoInfo = VideoMetadataManager.getVideoInfo(taskId)
@@ -273,12 +322,73 @@ class SystemDownloadManager @Inject constructor(
         }
     }
 
+    private fun getVisibleTaskIdsOrNull(): Set<String>? {
+        return try {
+            progressRepository.getProgressInfos().blockingFirst(emptyList())
+                .mapTo(hashSetOf()) { it.id }
+        } catch (error: Throwable) {
+            AppLogger.w(
+                "SystemDownloadManager: unable to verify visible download tasks: ${error.message}"
+            )
+            null
+        }
+    }
+
+    /**
+     * WorkManager may restore every unfinished worker after an APK update/process restart, or
+     * the user may lower the configured limit while several tasks are already running. Enforce
+     * the limit here as a hard cap instead of merely preventing additional queue starts.
+     */
+    private fun enforceConcurrencyLimit(
+        context: Context,
+        downloadingFiles: List<File>,
+        maxSimultaneous: Int
+    ): List<File> {
+        if (downloadingFiles.size <= maxSimultaneous) return downloadingFiles
+
+        // Keep the tasks with the freshest real progress. Older/excess workers are cancelled
+        // and placed at the tail without deleting their downloaded HLS fragments.
+        val orderedByFreshness = downloadingFiles.sortedByDescending { it.lastModified() }
+        val keep = orderedByFreshness.take(maxSimultaneous)
+        orderedByFreshness.drop(maxSimultaneous).forEach { downloadingFile ->
+            val taskId = downloadingFile.name.removeSuffix(DOWNLOADING_EXT)
+            AppLogger.w(
+                "SystemDownloadManager: active count ${downloadingFiles.size} exceeds " +
+                    "limit $maxSimultaneous; moving excess task $taskId to queue tail"
+            )
+            WorkManager.getInstance(context).cancelUniqueWork(taskId)
+            val pendingFile = File(fileUtil.tmpDir, taskId + PENDING_EXT)
+            pendingFile.delete()
+            if (!downloadingFile.renameTo(pendingFile)) {
+                downloadingFile.delete()
+                pendingFile.createNewFile()
+            }
+            pendingFile.setLastModified(System.currentTimeMillis())
+            updateTaskStatus(
+                taskId,
+                VideoTaskState.ENQUEUE,
+                "并发任务超过当前上限，已移至队尾"
+            )
+        }
+        return keep
+    }
+
     fun onTaskProgress(taskId: String) {
         getFlagFile(taskId, DOWNLOADING_EXT)?.takeIf { it.exists() }
             ?.setLastModified(System.currentTimeMillis())
     }
 
     fun requestQueueReconciliation() {
+        scheduleQueueCheck(ContextUtils.getApplicationContext(), MIN_QUEUE_CHECK_DELAY_MS)
+    }
+
+    fun onTaskRecordMissing(taskId: String) {
+        // A worker can finish after its row was deleted from the download list. Do not route
+        // that case through normal failure retry, otherwise it recreates a marker forever.
+        VideoMetadataManager.deleteVideoInfo(taskId)
+        removeFlagFiles(taskId)
+        clearRetryCount(taskId)
+        AppLogger.w("SystemDownloadManager: discarded finished task $taskId; UI record is missing")
         scheduleQueueCheck(ContextUtils.getApplicationContext(), MIN_QUEUE_CHECK_DELAY_MS)
     }
 

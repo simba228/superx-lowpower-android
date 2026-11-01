@@ -1,4 +1,14 @@
 <resources>
+    <string name="auto_open_floating_video">Automatically open floating video</string>
+    <string name="open_floating_video">Open floating video</string>
+    <string name="no_playable_video_source">No playable video source is available yet</string>
+    <string name="media_diagnostic_copied">Media diagnostic copied</string>
+    <string name="site_video_rules">Site video behavior</string>
+    <string name="site_video_rules_for">Video behavior for %1$s</string>
+    <string name="site_video_follow_global">Follow global setting</string>
+    <string name="site_video_never_auto_open">Never auto-open floating video</string>
+    <string name="site_video_always_auto_open">Always auto-open floating video</string>
+    <string name="smart_download_scheduling">Smart download threads (reduce threads on metered network or power saver)</string>
     <string name="app_name">SuperX Low Power</string>
     <string name="browser_search_hint">Search or enter a URL</string>
     <string name="default_search_engine">Default search engine</string>

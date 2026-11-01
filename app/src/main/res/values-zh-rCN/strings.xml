@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="auto_open_floating_video">自动弹出悬浮视频</string>
+    <string name="open_floating_video">播放当前检测到的视频</string>
+    <string name="no_playable_video_source">当前还没有可播放的视频地址</string>
+    <string name="media_diagnostic_copied">视频诊断信息已复制</string>
+    <string name="site_video_rules">本站视频规则</string>
+    <string name="site_video_rules_for">%1$s 的视频规则</string>
+    <string name="site_video_follow_global">跟随全局设置</string>
+    <string name="site_video_never_auto_open">本站永不自动弹出</string>
+    <string name="site_video_always_auto_open">本站始终自动弹出</string>
+    <string name="smart_download_scheduling">智能下载线程（流量网络或省电模式自动降并发）</string>
     <string name="title_progress">进度</string>
     <string name="title_settings">设置</string>
     <string name="dialog_video_title">找到的视频:</string>

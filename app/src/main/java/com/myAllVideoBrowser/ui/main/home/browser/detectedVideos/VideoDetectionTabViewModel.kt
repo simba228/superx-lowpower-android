@@ -316,6 +316,13 @@ open class VideoDetectionTabViewModel @Inject constructor(
 
         if (detectedVideos.any { isVideoInfoDuplicate(it, newInfo) }) {
             AppLogger.d("SKIP DUPLICATED VIDEO INFO: $newInfo")
+            // The same media can be rediscovered after an in-page episode/video switch.
+            // Keep the list deduplicated, but still publish it as the current source so
+            // the manual floating-player button does not keep playing an older item.
+            setButtonState(DownloadButtonStateCanDownload(newInfo))
+            viewModelScope.launch(Dispatchers.Main) {
+                videoPushedEvent.value = newInfo
+            }
             return
         }
 

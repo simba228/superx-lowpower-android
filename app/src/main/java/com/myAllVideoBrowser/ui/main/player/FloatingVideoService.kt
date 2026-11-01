@@ -30,6 +30,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.myAllVideoBrowser.R
+import com.myAllVideoBrowser.data.local.room.entity.VideoInfo
 import com.myAllVideoBrowser.ui.main.home.MainActivity
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -48,6 +49,15 @@ class FloatingVideoService : Service() {
         private const val NOTIFICATION_ID = 4107
         private const val MAX_SWIPE_SEEK_MS = 120_000L
         private const val MIN_SWIPE_SEEK_MS = 5_000L
+
+        @Volatile
+        private var verifiedDownloadInfo: VideoInfo? = null
+
+        fun setVerifiedDownloadInfo(videoInfo: VideoInfo?) {
+            verifiedDownloadInfo = videoInfo
+        }
+
+        fun getVerifiedDownloadInfo(): VideoInfo? = verifiedDownloadInfo
     }
 
     private lateinit var windowManager: WindowManager

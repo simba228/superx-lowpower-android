@@ -429,7 +429,7 @@ class YoutubeDlDownloaderWorker(appContext: Context, workerParams: WorkerParamet
             request.addOption("--sub-langs", "$deviceLanguage.*")
         }
 
-        val threadsCount = sharedPrefHelper.getM3u8DownloaderThreadCount()
+        val threadsCount = sharedPrefHelper.getEffectiveM3u8DownloaderThreadCount()
         request.addOption("-N", threadsCount)
 
         val isAudioOnlyExtract =

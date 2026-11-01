@@ -348,7 +348,7 @@ class SuperXDownloaderWorker(appContext: Context, workerParams: WorkerParameters
                             isOnMerge = true
                         )
                     },
-                    threadCount = sharedPrefHelper.getM3u8DownloaderThreadCount(),
+                    threadCount = sharedPrefHelper.getEffectiveM3u8DownloaderThreadCount(),
                     videoCodec = inputData.getString(GenericDownloader.Constants.VIDEO_CODEC),
                     isAudioOnlyExtract = inputData.getBoolean(
                         GenericDownloader.Constants.IS_AUDIO_ONLY_EXTRACT,
@@ -608,7 +608,7 @@ class SuperXDownloaderWorker(appContext: Context, workerParams: WorkerParameters
                             isOnMerge = true
                         )
                     },
-                    threadCount = sharedPrefHelper.getM3u8DownloaderThreadCount(),
+                    threadCount = sharedPrefHelper.getEffectiveM3u8DownloaderThreadCount(),
                     videoCodec = inputData.getString(GenericDownloader.Constants.VIDEO_CODEC),
                     isAudioOnlyExtract = inputData.getBoolean(
                         GenericDownloader.Constants.IS_AUDIO_ONLY_EXTRACT,

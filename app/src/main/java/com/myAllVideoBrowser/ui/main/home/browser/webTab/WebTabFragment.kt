@@ -1,6 +1,8 @@
 package com.myAllVideoBrowser.ui.main.home.browser.webTab
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -63,6 +65,8 @@ import com.myAllVideoBrowser.ui.main.home.browser.adblocker.AdBlockEngine
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.DetectedVideosTabFragment
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.VideoDetectionTabViewModel
 import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.DetectedVideoResource
+import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.MediaCandidate
+import com.myAllVideoBrowser.ui.main.home.browser.detectedVideos.MediaDetectionSource
 import com.myAllVideoBrowser.ui.main.player.VideoPlayerActivity
 import com.myAllVideoBrowser.ui.main.player.VideoPlayerFragment
 import com.myAllVideoBrowser.ui.main.player.FloatingVideoService
@@ -121,17 +125,18 @@ class WebTabFragment : BaseWebTabFragment() {
     private var videoToast: Toast? = null
 
     private var canGoCounter = 0
-    private var pendingFloatingVideo: VideoInfo? = null
+    private var pendingFloatingCandidate: MediaCandidate? = null
+    private var currentMediaCandidate: MediaCandidate? = null
     private var lastFloatingUrl = ""
     private var hasVerifiedFloatingResource = false
 
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
-        pendingFloatingVideo?.let { video ->
-            if (Settings.canDrawOverlays(requireContext())) startFloatingVideo(video)
+        pendingFloatingCandidate?.let { candidate ->
+            if (Settings.canDrawOverlays(requireContext())) launchMediaCandidate(candidate)
         }
-        pendingFloatingVideo = null
+        pendingFloatingCandidate = null
     }
 
     private val backPressedCallback = object : OnBackPressedCallback(true) {
@@ -201,6 +206,11 @@ class WebTabFragment : BaseWebTabFragment() {
             Glide.with(this@WebTabFragment).asGif().load(R.drawable.loading_floating)
                 .into(loadingWavy)
             loadingWavy.clipToOutline = true
+            floatingPlayFab.setOnClickListener { openCurrentFloatingVideo() }
+            floatingPlayFab.setOnLongClickListener {
+                copyCurrentMediaDiagnostics()
+                true
+            }
 
             configureWebView(this)
         }
@@ -251,6 +261,8 @@ class WebTabFragment : BaseWebTabFragment() {
         )
     }
 
+    override fun currentWebUrl(): String? = webTab.getUrl()
+
     override fun setIsDesktop(isDesktop: Boolean) {
         super.setIsDesktop(isDesktop)
         setUserAgentIsDesktop(isDesktop)
@@ -299,6 +311,7 @@ class WebTabFragment : BaseWebTabFragment() {
         activity?.onBackPressedDispatcher?.addCallback(
             viewLifecycleOwner, backPressedCallback
         )
+        updateFloatingPlayButton()
     }
 
     override fun onDestroy() {
@@ -322,6 +335,9 @@ class WebTabFragment : BaseWebTabFragment() {
         videoDetectionTabViewModel.pageChangedEvent.observe(viewLifecycleOwner) {
             hasVerifiedFloatingResource = false
             lastFloatingUrl = ""
+            currentMediaCandidate = null
+            FloatingVideoService.setVerifiedDownloadInfo(null)
+            updateFloatingPlayButton()
         }
         videoDetectionTabViewModel.videoPushedEvent.observe(viewLifecycleOwner) { videoInfo ->
             onVideoPushed(videoInfo)
@@ -335,11 +351,16 @@ class WebTabFragment : BaseWebTabFragment() {
     }
 
     private fun startDetectedResource(resource: DetectedVideoResource) {
-        if (!Settings.canDrawOverlays(requireContext())) return
         // Raw responses make the popup appear quickly, but once the detector has
         // produced the same verified item shown by the download panel, late
         // manifests/ads/quality variants must not replace that authoritative item.
-        if (hasVerifiedFloatingResource) return
+        if (hasVerifiedFloatingResource && resource.source != MediaDetectionSource.PAGE_PLAYBACK) {
+            return
+        }
+        if (resource.source == MediaDetectionSource.PAGE_PLAYBACK) {
+            hasVerifiedFloatingResource = false
+        }
+        FloatingVideoService.setVerifiedDownloadInfo(null)
         val url = resource.request.url.toString()
         val sourceUrl = webTab.getUrl().orEmpty()
         if (mainActivity.settingsViewModel.isAdBlockOn.get() &&
@@ -349,6 +370,37 @@ class WebTabFragment : BaseWebTabFragment() {
             return
         }
         if (url == lastFloatingUrl) return
+        currentMediaCandidate = MediaCandidate(
+            tabId = webTab.id,
+            pageUrl = sourceUrl,
+            pageTitle = webTab.getWebView()?.title.orEmpty(),
+            source = resource.source,
+            rawResource = resource
+        )
+        AppLogger.d("Current media candidate: ${currentMediaCandidate?.diagnosticSummary()}")
+        updateFloatingPlayButton()
+        if (!shouldAutoOpenFloatingVideo()) return
+        launchMediaCandidate(currentMediaCandidate ?: return)
+    }
+
+    private fun launchMediaCandidate(candidate: MediaCandidate) {
+        if (!Settings.canDrawOverlays(requireContext())) {
+            pendingFloatingCandidate = candidate
+            overlayPermissionLauncher.launch(
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${requireContext().packageName}")
+                )
+            )
+            return
+        }
+        candidate.videoInfo?.let { videoInfo ->
+            FloatingVideoService.setVerifiedDownloadInfo(videoInfo)
+            startFloatingVideo(videoInfo)
+            return
+        }
+        val resource = candidate.rawResource ?: return
+        val url = resource.request.url.toString()
         lastFloatingUrl = url
         val mime = when {
             resource.isM3u8 -> MimeTypes.APPLICATION_M3U8
@@ -382,7 +434,74 @@ class WebTabFragment : BaseWebTabFragment() {
         showToastVideoFound()
 
         hasVerifiedFloatingResource = true
-        autoOpenFloatingVideo(videoInfo)
+        currentMediaCandidate = (currentMediaCandidate ?: MediaCandidate(
+            tabId = webTab.id,
+            pageUrl = webTab.getUrl().orEmpty(),
+            pageTitle = floatingTitle,
+            source = MediaDetectionSource.VERIFIED
+        )).withVerifiedInfo(videoInfo, floatingTitle)
+        AppLogger.d("Verified media candidate: ${currentMediaCandidate?.diagnosticSummary()}")
+        // Keep the detector's authoritative VideoInfo for the overlay download button. The
+        // raw playable URL is enough for ExoPlayer, but can miss the format/download metadata
+        // that the downloader needs on signed or header-sensitive sites.
+        FloatingVideoService.setVerifiedDownloadInfo(videoInfo)
+        updateFloatingPlayButton()
+        if (shouldAutoOpenFloatingVideo()) {
+            autoOpenFloatingVideo(videoInfo)
+        }
+    }
+
+    private fun updateFloatingPlayButton() {
+        if (!::dataBinding.isInitialized) return
+        val hasVideo = currentMediaCandidate != null
+        dataBinding.floatingPlayContainer.visibility =
+            if (!shouldAutoOpenFloatingVideo() && hasVideo) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+    }
+
+    private fun openCurrentFloatingVideo() {
+        // Read the download button's authoritative current item at click time. This avoids
+        // opening a stale cached source when a site switches videos without navigating.
+        val currentDetectedVideo =
+            (videoDetectionTabViewModel.downloadButtonState.get()
+                as? DownloadButtonStateCanDownload)?.info
+        if (currentDetectedVideo != null) {
+            val title = webTab.getWebView()?.title.orEmpty()
+            currentMediaCandidate = (currentMediaCandidate ?: MediaCandidate(
+                tabId = webTab.id,
+                pageUrl = webTab.getUrl().orEmpty(),
+                pageTitle = title,
+                source = MediaDetectionSource.VERIFIED
+            )).withVerifiedInfo(currentDetectedVideo, title)
+        }
+        val candidate = currentMediaCandidate ?: return
+        AppLogger.d("Opening media candidate: ${candidate.diagnosticSummary()}")
+        launchMediaCandidate(candidate)
+    }
+
+    private fun shouldAutoOpenFloatingVideo(): Boolean {
+        val host = runCatching { Uri.parse(webTab.getUrl()).host.orEmpty() }.getOrDefault("")
+        return when (sharedPrefHelper.getSiteFloatingVideoMode(host)) {
+            -1 -> false
+            1 -> true
+            else -> mainActivity.settingsViewModel.isAutoOpenFloatingVideo.get()
+        }
+    }
+
+    private fun copyCurrentMediaDiagnostics() {
+        val candidate = currentMediaCandidate
+        if (candidate == null) {
+            Toast.makeText(requireContext(), R.string.no_playable_video_source, Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
+        val report = "SuperX media diagnostic\n${candidate.diagnosticSummary()}"
+        val clipboard = requireContext().getSystemService(ClipboardManager::class.java)
+        clipboard?.setPrimaryClip(ClipData.newPlainText("SuperX media diagnostic", report))
+        Toast.makeText(requireContext(), R.string.media_diagnostic_copied, Toast.LENGTH_SHORT).show()
     }
 
     private fun autoOpenFloatingVideo(videoInfo: VideoInfo) {
@@ -391,7 +510,13 @@ class WebTabFragment : BaseWebTabFragment() {
         if (url == lastFloatingUrl) return
         lastFloatingUrl = url
         if (!Settings.canDrawOverlays(requireContext())) {
-            pendingFloatingVideo = videoInfo
+            pendingFloatingCandidate = currentMediaCandidate ?: MediaCandidate(
+                tabId = webTab.id,
+                pageUrl = webTab.getUrl().orEmpty(),
+                pageTitle = webTab.getWebView()?.title.orEmpty(),
+                source = MediaDetectionSource.VERIFIED,
+                videoInfo = videoInfo
+            )
             overlayPermissionLauncher.launch(
                 Intent(
                     Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -404,16 +529,32 @@ class WebTabFragment : BaseWebTabFragment() {
     }
 
     private fun startFloatingVideo(videoInfo: VideoInfo) {
-        val format = FloatingVideoFormatSelector.select(videoInfo) ?: return
-        val url = format.url ?: return
+        val format = FloatingVideoFormatSelector.select(videoInfo)
+        val fallbackRequest = videoInfo.downloadUrls.firstOrNull { request ->
+            val requestUrl = request.url.toString()
+            requestUrl.startsWith("http://") || requestUrl.startsWith("https://")
+        }
+        val url = format?.url?.takeIf { it.startsWith("http") }
+            ?: fallbackRequest?.url?.toString()
+        if (url.isNullOrBlank()) {
+            AppLogger.e("Floating video unavailable: no playable URL in formats or downloadUrls")
+            Toast.makeText(requireContext(), R.string.no_playable_video_source, Toast.LENGTH_SHORT)
+                .show()
+            return
+        }
         AppLogger.d(
-            "Floating video selected: format=${format.formatId}, ext=${format.ext}, " +
-                "height=${format.height}, hls=${format.isM3u8}"
+            "Floating video selected: format=${format?.formatId}, ext=${format?.ext}, " +
+                "height=${format?.height}, fallback=${format == null}"
         )
-        val headers = JSONObject(format.httpHeaders ?: emptyMap<String, String>()).toString()
-        val mime = if (format.isM3u8 || url.contains("m3u8", true)) {
+        val requestHeaders = fallbackRequest?.headers?.toMap().orEmpty()
+        val headers = JSONObject(format?.httpHeaders ?: requestHeaders).toString()
+        val mime = if (format?.isM3u8 == true || videoInfo.isM3u8 || url.contains("m3u8", true)) {
             MimeTypes.APPLICATION_M3U8
-        } else null
+        } else if (format?.isMpd == true || videoInfo.isMpd || url.contains(".mpd", true)) {
+            MimeTypes.APPLICATION_MPD
+        } else {
+            null
+        }
         ContextCompat.startForegroundService(
             requireContext(),
             Intent(requireContext(), FloatingVideoService::class.java).apply {
@@ -651,6 +792,10 @@ class WebTabFragment : BaseWebTabFragment() {
 
     private fun handleWorkerEvent() {
         workerEventProvider.getWorkerM3u8MpdEvent().observe(viewLifecycleOwner) { state ->
+            // ServiceWorker detection is shared by the browser container. Only the active
+            // WebTab may consume it; otherwise a background/adjacent tab can overwrite the
+            // manual floating-player source with an unrelated video.
+            if (!isCurrentWebTab()) return@observe
             if (state is DownloadButtonStateCanDownload && state.info?.id?.isNotEmpty() == true) {
                 lifecycleScope.launch(Dispatchers.IO) {
                     videoDetectionTabViewModel.pushNewVideoInfoToAll(state.info)
@@ -674,6 +819,7 @@ class WebTabFragment : BaseWebTabFragment() {
         }
 
         workerEventProvider.getWorkerMP4Event().observe(viewLifecycleOwner) { state ->
+            if (!isCurrentWebTab()) return@observe
             if (state is DownloadButtonStateCanDownload && state.info?.id?.isNotEmpty() == true) {
                 AppLogger.d("Worker MP4 event CanDownload: ${state.info}")
                 lifecycleScope.launch(Dispatchers.IO) {
@@ -683,6 +829,12 @@ class WebTabFragment : BaseWebTabFragment() {
                 AppLogger.d("Worker MP4 event state: $state")
             }
         }
+    }
+
+    private fun isCurrentWebTab(): Boolean {
+        val currentIndex = currentTabIndexProvider.getCurrentTabIndex().get()
+        return runCatching { pageTabProvider.getPageTab(currentIndex).id == webTab.id }
+            .getOrDefault(false)
     }
 
     private fun handleIndexChangeEvent() {
@@ -983,27 +1135,24 @@ class WebTabFragment : BaseWebTabFragment() {
             hasVerifiedFloatingResource = false
             return
         }
-        if (url == lastFloatingUrl || !Settings.canDrawOverlays(requireContext())) return
-        hasVerifiedFloatingResource = true
-        lastFloatingUrl = url
         val pageUrl = webTab.getUrl().orEmpty()
-        val headers = mutableMapOf<String, String>()
-        webTab.getWebView()?.settings?.userAgentString?.let { headers["User-Agent"] = it }
-        if (pageUrl.isNotBlank()) {
-            headers["Referer"] = pageUrl
-            CookieManager.getInstance().getCookie(pageUrl)?.let { headers["Cookie"] = it }
+        val requestBuilder = okhttp3.Request.Builder().url(url)
+        webTab.getWebView()?.settings?.userAgentString?.let {
+            requestBuilder.header("User-Agent", it)
         }
-        ContextCompat.startForegroundService(
-            requireContext(),
-            Intent(requireContext(), FloatingVideoService::class.java).apply {
-                action = FloatingVideoService.ACTION_START
-                putExtra(VideoPlayerFragment.VIDEO_URL, url)
-                putExtra(VideoPlayerFragment.VIDEO_HEADERS, JSONObject(headers).toString())
-                putExtra(VideoPlayerFragment.VIDEO_NAME, webTab.getWebView()?.title.orEmpty())
-                if (url.contains(".m3u8", ignoreCase = true)) {
-                    putExtra(VideoPlayerFragment.VIDEO_MIME, MimeTypes.APPLICATION_M3U8)
-                }
+        if (pageUrl.isNotBlank()) {
+            requestBuilder.header("Referer", pageUrl)
+            CookieManager.getInstance().getCookie(pageUrl)?.let {
+                requestBuilder.header("Cookie", it)
             }
+        }
+        startDetectedResource(
+            DetectedVideoResource(
+                request = requestBuilder.build(),
+                isM3u8 = url.contains(".m3u8", ignoreCase = true),
+                isMpd = url.contains(".mpd", ignoreCase = true),
+                source = MediaDetectionSource.PAGE_PLAYBACK
+            )
         )
     }
 }

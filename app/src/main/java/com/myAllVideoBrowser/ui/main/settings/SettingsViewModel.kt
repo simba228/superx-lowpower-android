@@ -53,6 +53,8 @@ class SettingsViewModel @Inject constructor(
     val isAdBlockOn = ObservableBoolean(true)
     val isDownloadSubtitles = ObservableBoolean(false)
     val queueSize = ObservableInt(2)
+    val isAutoOpenFloatingVideo = ObservableBoolean(false)
+    val isSmartDownloadScheduling = ObservableBoolean(false)
     private val isShowVideoActionButton = ObservableBoolean(true)
     private val isShowVideoAlert = ObservableBoolean(true)
     private val isCheckEveryRequestOnVideo = ObservableBoolean(true)
@@ -71,6 +73,8 @@ class SettingsViewModel @Inject constructor(
             val isDesktop = sharedPrefHelper.getIsDesktop()
             val showVideoAlert = sharedPrefHelper.isShowVideoAlert()
             val showVideoAction = sharedPrefHelper.isShowActionButton()
+            val autoOpenFloatingVideo = sharedPrefHelper.isAutoOpenFloatingVideo()
+            val smartDownloadScheduling = sharedPrefHelper.isSmartDownloadScheduling()
             val checkEveryVideo = sharedPrefHelper.isCheckEveryRequestOnVideo()
             val findVideoByUrl = sharedPrefHelper.isFindVideoByUrl()
             val autoDarkMode = sharedPrefHelper.isAutoTheme()
@@ -107,6 +111,8 @@ class SettingsViewModel @Inject constructor(
                 isDesktopMode.set(isDesktop)
                 isShowVideoAlert.set(showVideoAlert)
                 isShowVideoActionButton.set(showVideoAction)
+                isAutoOpenFloatingVideo.set(autoOpenFloatingVideo)
+                isSmartDownloadScheduling.set(smartDownloadScheduling)
                 isCheckEveryRequestOnVideo.set(checkEveryVideo)
                 isFindVideoByUrl.set(findVideoByUrl)
                 isAutoDarkMode.set(autoDarkMode)
@@ -309,6 +315,20 @@ class SettingsViewModel @Inject constructor(
         isShowVideoActionButton.set(false)
         viewModelScope.launch(Dispatchers.IO) {
             sharedPrefHelper.setIsShowActionButton(false)
+        }
+    }
+
+    fun setAutoOpenFloatingVideo(isEnabled: Boolean) {
+        isAutoOpenFloatingVideo.set(isEnabled)
+        viewModelScope.launch(Dispatchers.IO) {
+            sharedPrefHelper.setAutoOpenFloatingVideo(isEnabled)
+        }
+    }
+
+    fun setSmartDownloadScheduling(isEnabled: Boolean) {
+        isSmartDownloadScheduling.set(isEnabled)
+        viewModelScope.launch(Dispatchers.IO) {
+            sharedPrefHelper.setSmartDownloadScheduling(isEnabled)
         }
     }
 
